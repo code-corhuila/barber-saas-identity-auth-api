@@ -24,5 +24,6 @@
   <modules>
     <module>identity-auth-core</module>
     <module>identity-auth-adapters</module>
+    <module>identity-auth-app</module>
   </modules>
 </project>
