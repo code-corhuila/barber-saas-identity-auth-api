@@ -1,5 +1,6 @@
 package co.edu.corhuila.barbersaas.identityauth.adapter.in.http;
 
+import co.edu.corhuila.barbersaas.identityauth.adapter.in.http.ApiError.ForbiddenException;
 import co.edu.corhuila.barbersaas.identityauth.adapter.in.http.ApiError.ValidationException;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.IdempotencyKeyReused;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.InvalidCredentials;
@@ -33,6 +34,11 @@ public class ErrorHandler {
     @ExceptionHandler(InvalidCredentials.class)
     ResponseEntity<ApiError> invalidCredentials(InvalidCredentials e) {
         return respond(HttpStatus.UNAUTHORIZED, ApiError.of(ApiError.UNAUTHORIZED, e.getMessage()));
+    }
+
+    @ExceptionHandler(ForbiddenException.class)
+    ResponseEntity<ApiError> forbidden(ForbiddenException e) {
+        return respond(HttpStatus.FORBIDDEN, ApiError.of(ApiError.FORBIDDEN, e.getMessage()));
     }
 
     @ExceptionHandler({BusinessRuleViolation.class, IdempotencyKeyReused.class})
