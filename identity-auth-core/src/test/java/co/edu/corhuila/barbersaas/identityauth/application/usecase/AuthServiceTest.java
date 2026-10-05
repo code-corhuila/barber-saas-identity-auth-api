@@ -15,6 +15,7 @@ import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.IdempotencyKeyReused;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.InvalidCredentials;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.RegisterCommand;
+import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.UserNotFound;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.Barbershops;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.PasswordHasher;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.TokenIssuer;
@@ -258,6 +259,23 @@ class AuthServiceTest {
 
         assertThrows(InvalidCredentials.class, () -> service.issueBarbershopToken(barber, barbershop));
         assertThrows(InvalidCredentials.class, () -> service.issueBarbershopToken(UUID.randomUUID(), barbershop));
+    }
+
+    @Test
+    void another_service_reads_a_user_by_id() {
+        UUID barbershop = UUID.randomUUID();
+        Created barber = service.createBarber(barber("juan@example.com"), barbershop, "key-barber-01");
+
+        User read = service.findUser(barber.user().id());
+
+        assertEquals(Role.BARBER, read.role());
+        assertEquals(barbershop, read.barbershopId());
+        assertEquals("Juan Perez", read.fullName());
+    }
+
+    @Test
+    void an_unknown_user_is_not_found() {
+        assertThrows(UserNotFound.class, () -> service.findUser(UUID.randomUUID()));
     }
 
     private static CreateBarberCommand barber(String email) {
