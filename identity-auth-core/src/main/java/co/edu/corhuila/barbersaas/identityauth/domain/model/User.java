@@ -59,6 +59,12 @@ public final class User {
                 now);
     }
 
+    /** A barber an owner adds to their own barbershop, with an initial password (DEC-AUTH-05). */
+    public static User newBarber(UUID id, UUID barbershopId, String fullName, String email, String passwordHash,
+                                 String phone, Instant now) {
+        return new User(id, barbershopId, fullName, email, passwordHash, phone, null, Role.BARBER, true, now);
+    }
+
     /** E-mails are compared case-insensitively (uq_app_user_email is on lower(email)). */
     public static String normalizeEmail(String email) {
         if (email == null) {
