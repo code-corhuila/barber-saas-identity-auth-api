@@ -39,6 +39,7 @@ no Spring), `identity-auth-adapters` (HTTP, JDBC, BCrypt, RS256) and `identity-a
 | `POST /api/v1/auth/register` | `Idempotency-Key` required; 201, or 200 on a retry; 422 if the e-mail exists |
 | `POST /api/v1/auth/login` | 200 with tokens; 401 with the same message for any wrong credential |
 | `GET /api/v1/auth/jwks` | RFC 7517 key set |
+| `POST /internal/v1/owners` | Only the workflow's service token (`sub: barber-saas-workflow`), never routed by the gateway; creates the `ADMIN_BARBERSHOP` of a barbershop the onboarding saga just created; 201, or 200 on a retry; 403 for any other token; 422 if the e-mail exists |
 | `GET /health` | liveness, no token |
 
 ### How to start it
