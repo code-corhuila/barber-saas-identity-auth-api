@@ -1,12 +1,16 @@
 package co.edu.corhuila.barbersaas.identityauth.adapter.in.http;
 
 import co.edu.corhuila.barbersaas.identityauth.adapter.in.http.ApiError.FieldError;
+import co.edu.corhuila.barbersaas.identityauth.adapter.in.http.ApiError.ForbiddenException;
 import co.edu.corhuila.barbersaas.identityauth.adapter.in.http.ApiError.ValidationException;
 import co.edu.corhuila.barbersaas.identityauth.adapter.out.security.Rs256TokenIssuer;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.AuthResult;
+import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.CreateBarberCommand;
+import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.Created;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.RegisterCommand;
 import co.edu.corhuila.barbersaas.identityauth.domain.model.User;
+import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
@@ -29,6 +33,9 @@ public class AuthController {
     public record RegisterRequest(String fullName, String email, String password, String phone) { }
 
     public record LoginRequest(String email, String password) { }
+
+    /** No barbershopId and no role: both come from the owner's token. */
+    public record CreateBarberRequest(String fullName, String email, String password, String phone) { }
 
     public record UserSummary(UUID id, String fullName, String email, String phone, String profilePhotoUrl,
                               String role, UUID barbershopId, boolean isActive) {
@@ -73,6 +80,36 @@ public class AuthController {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .location(URI.create("/api/v1/users/" + result.user().id()))
                 .body(AuthResponse.of(result));
+    }
+
+    /** Role ADMIN_BARBERSHOP; the barber joins the barbershop of the owner's token (DEC-AUTH-05). */
+    @PostMapping("/barbers")
+    public ResponseEntity<UserSummary> createBarber(
+            HttpServletRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestBody(required = false) CreateBarberRequest body) {
+        Caller caller = AuthFilter.caller(request);
+        if (!caller.hasRole("ADMIN_BARBERSHOP") || caller.barbershopId() == null) {
+            throw new ForbiddenException();
+        }
+        List<FieldError> errors = new ArrayList<>();
+        requireIdempotencyKey(errors, idempotencyKey);
+        if (body == null) {
+            throw new ValidationException("the body is required", errors);
+        }
+        requireAccountFields(errors, body.fullName(), body.email(), body.password(), body.phone());
+        if (!errors.isEmpty()) {
+            throw new ValidationException("the request is not valid", errors);
+        }
+        Created result = auth.createBarber(
+                new CreateBarberCommand(body.fullName(), body.email(), body.password(), body.phone()),
+                caller.barbershopId(), idempotencyKey);
+        if (!result.created()) {
+            return ResponseEntity.ok(UserSummary.of(result.user()));
+        }
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .location(URI.create("/api/v1/users/" + result.user().id()))
+                .body(UserSummary.of(result.user()));
     }
 
     @PostMapping("/login")
