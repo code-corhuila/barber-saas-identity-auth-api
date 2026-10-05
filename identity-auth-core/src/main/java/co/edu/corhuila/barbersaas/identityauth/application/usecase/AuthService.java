@@ -17,10 +17,12 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Optional;
+import java.util.function.BiFunction;
 
 public class AuthService implements AuthUseCases {
 
     static final String REGISTER_OPERATION = "POST /api/v1/auth/register";
+    static final String CREATE_OWNER_OPERATION = "POST /internal/v1/owners";
     private static final char SEPARATOR = 0;
 
     private final UserRepository users;
@@ -42,32 +44,50 @@ public class AuthService implements AuthUseCases {
 
     @Override
     public AuthResult register(RegisterCommand command, String idempotencyKey) {
-        String requestHash = sha256(String.join(String.valueOf(SEPARATOR), String.valueOf(command.fullName()),
-                String.valueOf(command.email()), String.valueOf(command.password()), String.valueOf(command.phone())));
+        Created account = createOnce(idempotencyKey, REGISTER_OPERATION,
+                requestHash(command.fullName(), command.email(), command.password(), command.phone()),
+                command.password(), command.email(),
+                (email, hash) -> User.newClient(ids.next(), command.fullName(), email, hash, command.phone(),
+                        clock.instant()));
+        return authenticate(account.user(), account.created());
+    }
 
-        // A retry with the same key returns the first account; it never creates a second one.
-        Optional<UserRepository.StoredKey> stored = users.findKey(idempotencyKey, REGISTER_OPERATION);
+    @Override
+    public Created createOwner(CreateOwnerCommand command, String idempotencyKey) {
+        return createOnce(idempotencyKey, CREATE_OWNER_OPERATION,
+                requestHash(command.fullName(), command.email(), command.password(), command.phone(),
+                        String.valueOf(command.barbershopId())),
+                command.password(), command.email(),
+                (email, hash) -> User.newOwner(ids.next(), command.barbershopId(), command.fullName(), email, hash,
+                        command.phone(), clock.instant()));
+    }
+
+    /**
+     * Creates an account once per Idempotency-Key: a retry with the same key and body returns the
+     * first account and creates nothing; the same key with another body is refused.
+     */
+    private Created createOnce(String idempotencyKey, String operation, String requestHash, String password,
+                               String rawEmail, BiFunction<String, String, User> build) {
+        Optional<UserRepository.StoredKey> stored = users.findKey(idempotencyKey, operation);
         if (stored.isPresent()) {
             if (!stored.get().requestHash().equals(requestHash)) {
                 throw new IdempotencyKeyReused();
             }
-            User first = users.findById(stored.get().resourceId()).orElseThrow();
-            return authenticate(first, false);
+            return new Created(users.findById(stored.get().resourceId()).orElseThrow(), false);
         }
 
-        PasswordPolicy.check(command.password());
-        String email = User.normalizeEmail(command.email());
+        PasswordPolicy.check(password);
+        String email = User.normalizeEmail(rawEmail);
         if (users.findByEmail(email).isPresent()) {
             throw new BusinessRuleViolation("The email is already registered");
         }
-        User user = User.newClient(ids.next(), command.fullName(), email, hasher.hash(command.password()),
-                command.phone(), clock.instant());
+        User user = build.apply(email, hasher.hash(password));
         try {
-            users.saveNew(user, new IdempotencyRecord(idempotencyKey, REGISTER_OPERATION, requestHash));
+            users.saveNew(user, new IdempotencyRecord(idempotencyKey, operation, requestHash));
         } catch (UserRepository.EmailAlreadyTaken e) {
             throw new BusinessRuleViolation(e.getMessage());
         }
-        return authenticate(user, true);
+        return new Created(user, true);
     }
 
     @Override
@@ -90,6 +110,15 @@ public class AuthService implements AuthUseCases {
         TokenIssuer.IssuedToken access = tokens.issue(user, now);
         String refresh = refreshTokens.issueFor(user.id(), now);
         return new AuthResult(access.token(), refresh, access.expiresInSeconds(), user, created);
+    }
+
+    /** The same hash register always stored: the fields joined with a NUL, so old keys still match. */
+    private static String requestHash(String... fields) {
+        String[] values = new String[fields.length];
+        for (int i = 0; i < fields.length; i++) {
+            values[i] = String.valueOf(fields[i]);
+        }
+        return sha256(String.join(String.valueOf(SEPARATOR), values));
     }
 
     private static String sha256(String value) {
