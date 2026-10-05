@@ -10,6 +10,7 @@ import java.security.Signature;
 import java.security.spec.X509EncodedKeySpec;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.UUID;
 
 /**
  * Each service validates the token itself. The gateway only filters requests
@@ -41,8 +42,8 @@ public class Rs256Verifier {
         }
     }
 
-    /** Returns the subject of a valid token. */
-    public String verify(String token, Instant now) throws InvalidTokenException {
+    /** Returns who calls: the subject, role and tenant of a valid token. */
+    public Caller verify(String token, Instant now) throws InvalidTokenException {
         String[] parts = token.split("\\.");
         if (parts.length != 3) {
             throw new InvalidTokenException("malformed token");
@@ -61,13 +62,15 @@ public class Rs256Verifier {
                 throw new InvalidTokenException("bad signature");
             }
             JsonNode claims = json.readTree(Base64.getUrlDecoder().decode(parts[1]));
-            if (!claims.path("exp").isNumber() || !claims.path("sub").isTextual()) {
-                throw new InvalidTokenException("exp and sub are required");
+            if (!claims.path("exp").isNumber() || !claims.path("sub").isTextual() || !claims.path("role").isTextual()) {
+                throw new InvalidTokenException("exp, sub and role are required");
             }
             if (now.getEpochSecond() > claims.get("exp").asLong() + LEEWAY_SECONDS) {
                 throw new InvalidTokenException("expired");
             }
-            return claims.get("sub").asText();
+            UUID tenant = claims.path("barbershopId").isTextual()
+                    ? UUID.fromString(claims.get("barbershopId").asText()) : null;
+            return new Caller(claims.get("sub").asText(), claims.get("role").asText(), tenant);
         } catch (InvalidTokenException e) {
             throw e;
         } catch (Exception e) {
