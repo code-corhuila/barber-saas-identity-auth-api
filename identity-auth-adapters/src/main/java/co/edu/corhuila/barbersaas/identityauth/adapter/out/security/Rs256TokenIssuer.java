@@ -10,10 +10,12 @@ import java.security.KeyFactory;
 import java.security.Signature;
 import java.security.interfaces.RSAPrivateCrtKey;
 import java.security.spec.PKCS8EncodedKeySpec;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Signs access tokens with RS256 and the claims of 07-api/authentication.md. The public half
@@ -45,6 +47,16 @@ public class Rs256TokenIssuer implements TokenIssuer {
 
     @Override
     public IssuedToken issue(User user, Instant now) {
+        return sign(user, user.barbershopId(), now, lifetimeSeconds);
+    }
+
+    /** The same claims as a login token of that client, plus the barbershop they picked (DEC-AUTH-06). */
+    @Override
+    public IssuedToken issueBound(User client, UUID barbershopId, Instant now, Duration lifetime) {
+        return sign(client, barbershopId, now, lifetime.toSeconds());
+    }
+
+    private IssuedToken sign(User user, UUID barbershopId, Instant now, long lifetimeSeconds) {
         Map<String, Object> header = new LinkedHashMap<>();
         header.put("alg", "RS256");
         header.put("typ", "JWT");
@@ -53,8 +65,8 @@ public class Rs256TokenIssuer implements TokenIssuer {
         claims.put("iss", ISSUER);
         claims.put("sub", user.id().toString());
         claims.put("role", user.role().name());
-        if (user.barbershopId() != null) {
-            claims.put("barbershopId", user.barbershopId().toString());
+        if (barbershopId != null) {
+            claims.put("barbershopId", barbershopId.toString());
         }
         claims.put("iat", now.getEpochSecond());
         claims.put("exp", now.getEpochSecond() + lifetimeSeconds);
