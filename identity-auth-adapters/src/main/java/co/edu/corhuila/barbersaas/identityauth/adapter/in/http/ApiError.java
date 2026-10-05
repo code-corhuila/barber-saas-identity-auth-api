@@ -19,6 +19,7 @@ public record ApiError(String error, String message, List<FieldError> details, S
     public static final String INVALID_STATUS_TRANSITION = "INVALID_STATUS_TRANSITION";
     public static final String BUSINESS_RULE_VIOLATION = "BUSINESS_RULE_VIOLATION";
     public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
+    public static final String SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE";
 
     public record FieldError(String field, String message) { }
 
