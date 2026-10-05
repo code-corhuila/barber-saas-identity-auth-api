@@ -1,8 +1,12 @@
 package co.edu.corhuila.barbersaas.identityauth.adapter.out.security;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import co.edu.corhuila.barbersaas.identityauth.adapter.in.http.Caller;
 import co.edu.corhuila.barbersaas.identityauth.adapter.in.http.Rs256Verifier;
 import co.edu.corhuila.barbersaas.identityauth.domain.model.Role;
 import co.edu.corhuila.barbersaas.identityauth.domain.model.User;
@@ -35,7 +39,24 @@ class Rs256TokenIssuerTest {
 
         String token = issuer.issue(user, now).token();
 
-        assertEquals(user.id().toString(), new Rs256Verifier(issuer.publicKeyPem()).verify(token, now));
+        Caller caller = new Rs256Verifier(issuer.publicKeyPem()).verify(token, now);
+        assertEquals(user.id().toString(), caller.subject());
+        assertEquals("CLIENT", caller.role());
+        assertNull(caller.barbershopId());
+    }
+
+    @Test
+    void the_verifier_reads_the_tenant_of_barbershop_staff() throws Exception {
+        UUID barbershop = UUID.randomUUID();
+        User owner = new User(UUID.randomUUID(), barbershop, "Andres", "andres@example.com", "hash", null, null,
+                Role.ADMIN_BARBERSHOP, true, Instant.now());
+        Instant now = Instant.now();
+
+        Caller caller = new Rs256Verifier(issuer.publicKeyPem()).verify(issuer.issue(owner, now).token(), now);
+
+        assertTrue(caller.hasRole("ADMIN_BARBERSHOP"));
+        assertEquals(barbershop, caller.barbershopId());
+        assertFalse(caller.isService("barber-saas-workflow"));
     }
 
     @Test
