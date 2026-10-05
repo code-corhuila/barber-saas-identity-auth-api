@@ -6,6 +6,7 @@ import co.edu.corhuila.barbersaas.identityauth.adapter.in.http.ApiError.Validati
 import co.edu.corhuila.barbersaas.identityauth.adapter.out.security.Rs256TokenIssuer;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.AuthResult;
+import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.BarbershopToken;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.CreateBarberCommand;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.Created;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.RegisterCommand;
@@ -48,6 +49,16 @@ public class AuthController {
     public record AuthResponse(String accessToken, String refreshToken, long expiresIn, UserSummary user) {
         static AuthResponse of(AuthResult r) {
             return new AuthResponse(r.accessToken(), r.refreshToken(), r.expiresIn(), UserSummary.of(r.user()));
+        }
+    }
+
+    /** The barbershop the client picked in the anonymous catalog (DEC-AUTH-06). */
+    public record BarbershopTokenRequest(UUID barbershopId) { }
+
+    /** No refresh token: the platform session keeps its own. */
+    public record BarbershopTokenResponse(String accessToken, long expiresIn, UUID barbershopId) {
+        static BarbershopTokenResponse of(BarbershopToken t) {
+            return new BarbershopTokenResponse(t.accessToken(), t.expiresIn(), t.barbershopId());
         }
     }
 
@@ -110,6 +121,25 @@ public class AuthController {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .location(URI.create("/api/v1/users/" + result.user().id()))
                 .body(UserSummary.of(result.user()));
+    }
+
+    /**
+     * Role CLIENT (DEC-AUTH-06), with a platform token or one bound to another barbershop. The only
+     * operation whose body carries a barbershopId: choosing the tenant is what it does.
+     */
+    @PostMapping("/barbershop-token")
+    public BarbershopTokenResponse barbershopToken(HttpServletRequest request,
+                                                   @RequestBody(required = false) BarbershopTokenRequest body) {
+        Caller caller = AuthFilter.caller(request);
+        if (!caller.hasRole("CLIENT")) {
+            throw new ForbiddenException();
+        }
+        if (body == null || body.barbershopId() == null) {
+            throw new ValidationException("the request is not valid",
+                    List.of(new FieldError("barbershopId", "required")));
+        }
+        return BarbershopTokenResponse.of(
+                auth.issueBarbershopToken(UUID.fromString(caller.subject()), body.barbershopId()));
     }
 
     @PostMapping("/login")

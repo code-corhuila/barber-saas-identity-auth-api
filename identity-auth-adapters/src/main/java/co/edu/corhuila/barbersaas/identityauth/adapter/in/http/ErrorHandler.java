@@ -2,8 +2,10 @@ package co.edu.corhuila.barbersaas.identityauth.adapter.in.http;
 
 import co.edu.corhuila.barbersaas.identityauth.adapter.in.http.ApiError.ForbiddenException;
 import co.edu.corhuila.barbersaas.identityauth.adapter.in.http.ApiError.ValidationException;
+import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.BarbershopNotFound;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.IdempotencyKeyReused;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.InvalidCredentials;
+import co.edu.corhuila.barbersaas.identityauth.application.port.out.Barbershops;
 import co.edu.corhuila.barbersaas.identityauth.domain.model.DomainException.BusinessRuleViolation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,6 +46,19 @@ public class ErrorHandler {
     @ExceptionHandler({BusinessRuleViolation.class, IdempotencyKeyReused.class})
     ResponseEntity<ApiError> businessRule(RuntimeException e) {
         return respond(HttpStatus.UNPROCESSABLE_ENTITY, ApiError.of(ApiError.BUSINESS_RULE_VIOLATION, e.getMessage()));
+    }
+
+    @ExceptionHandler(BarbershopNotFound.class)
+    ResponseEntity<ApiError> barbershopNotFound(BarbershopNotFound e) {
+        return respond(HttpStatus.NOT_FOUND, ApiError.of(ApiError.NOT_FOUND, e.getMessage()));
+    }
+
+    /** barbershop-api could not be asked (DEC-AUTH-06): logged, and no token is issued. */
+    @ExceptionHandler(Barbershops.Unavailable.class)
+    ResponseEntity<ApiError> barbershopsUnavailable(Barbershops.Unavailable e) {
+        log.warn("barbershop check failed: {}", e.getMessage());
+        return respond(HttpStatus.SERVICE_UNAVAILABLE,
+                ApiError.of(ApiError.SERVICE_UNAVAILABLE, "The barbershop could not be checked, try again"));
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
