@@ -17,12 +17,14 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.function.BiFunction;
 
 public class AuthService implements AuthUseCases {
 
     static final String REGISTER_OPERATION = "POST /api/v1/auth/register";
     static final String CREATE_OWNER_OPERATION = "POST /internal/v1/owners";
+    static final String CREATE_BARBER_OPERATION = "POST /api/v1/auth/barbers";
     private static final char SEPARATOR = 0;
 
     private final UserRepository users;
@@ -59,6 +61,16 @@ public class AuthService implements AuthUseCases {
                         String.valueOf(command.barbershopId())),
                 command.password(), command.email(),
                 (email, hash) -> User.newOwner(ids.next(), command.barbershopId(), command.fullName(), email, hash,
+                        command.phone(), clock.instant()));
+    }
+
+    @Override
+    public Created createBarber(CreateBarberCommand command, UUID ownerBarbershopId, String idempotencyKey) {
+        return createOnce(idempotencyKey, CREATE_BARBER_OPERATION,
+                requestHash(command.fullName(), command.email(), command.password(), command.phone(),
+                        String.valueOf(ownerBarbershopId)),
+                command.password(), command.email(),
+                (email, hash) -> User.newBarber(ids.next(), ownerBarbershopId, command.fullName(), email, hash,
                         command.phone(), clock.instant()));
     }
 

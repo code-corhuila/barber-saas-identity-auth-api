@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.AuthResult;
+import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.CreateBarberCommand;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.CreateOwnerCommand;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.Created;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.IdempotencyKeyReused;
@@ -165,6 +166,49 @@ class AuthServiceTest {
     void an_owner_needs_a_barbershop() {
         assertThrows(BusinessRuleViolation.class,
                 () -> service.createOwner(owner("andres@example.com", null), "saga-1:create-owner"));
+    }
+
+    @Test
+    void an_owner_adds_a_barber_to_their_own_barbershop() {
+        UUID ownerBarbershop = UUID.randomUUID();
+
+        Created barber = service.createBarber(barber("Juan@Example.com"), ownerBarbershop, "key-barber-01");
+
+        assertTrue(barber.created());
+        assertEquals(Role.BARBER, barber.user().role());
+        assertEquals(ownerBarbershop, barber.user().barbershopId());
+        assertEquals("juan@example.com", barber.user().email());
+    }
+
+    @Test
+    void the_barber_logs_in_with_the_initial_password() {
+        service.createBarber(barber("juan@example.com"), UUID.randomUUID(), "key-barber-01");
+
+        AuthResult login = service.login("juan@example.com", "Inicial2026");
+
+        assertEquals(Role.BARBER, login.user().role());
+    }
+
+    @Test
+    void a_retried_barber_creation_returns_the_same_account() {
+        UUID ownerBarbershop = UUID.randomUUID();
+        Created first = service.createBarber(barber("juan@example.com"), ownerBarbershop, "key-barber-01");
+        Created retry = service.createBarber(barber("juan@example.com"), ownerBarbershop, "key-barber-01");
+
+        assertFalse(retry.created());
+        assertEquals(first.user().id(), retry.user().id());
+    }
+
+    @Test
+    void a_barber_with_an_email_already_registered_is_refused() {
+        service.register(command("juan@example.com"), "key-00000001");
+
+        assertThrows(BusinessRuleViolation.class,
+                () -> service.createBarber(barber("juan@example.com"), UUID.randomUUID(), "key-barber-01"));
+    }
+
+    private static CreateBarberCommand barber(String email) {
+        return new CreateBarberCommand("Juan Perez", email, "Inicial2026", "+573009876543");
     }
 
     private static CreateOwnerCommand owner(String email, UUID barbershopId) {
