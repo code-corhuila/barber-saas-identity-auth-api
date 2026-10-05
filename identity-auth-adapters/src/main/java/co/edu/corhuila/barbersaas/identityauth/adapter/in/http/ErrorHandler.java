@@ -5,6 +5,7 @@ import co.edu.corhuila.barbersaas.identityauth.adapter.in.http.ApiError.Validati
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.BarbershopNotFound;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.IdempotencyKeyReused;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.InvalidCredentials;
+import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.UserNotFound;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.Barbershops;
 import co.edu.corhuila.barbersaas.identityauth.domain.model.DomainException.BusinessRuleViolation;
 import org.slf4j.Logger;
@@ -15,6 +16,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /** The ONLY place where errors become status codes. Every error answers with the envelope. */
@@ -46,6 +48,17 @@ public class ErrorHandler {
     @ExceptionHandler({BusinessRuleViolation.class, IdempotencyKeyReused.class})
     ResponseEntity<ApiError> businessRule(RuntimeException e) {
         return respond(HttpStatus.UNPROCESSABLE_ENTITY, ApiError.of(ApiError.BUSINESS_RULE_VIOLATION, e.getMessage()));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    ResponseEntity<ApiError> badPathValue(MethodArgumentTypeMismatchException e) {
+        return respond(HttpStatus.BAD_REQUEST, ApiError.of(ApiError.VALIDATION_ERROR, "the request is not valid",
+                java.util.List.of(new ApiError.FieldError(e.getName(), "not a valid value"))));
+    }
+
+    @ExceptionHandler(UserNotFound.class)
+    ResponseEntity<ApiError> userNotFound(UserNotFound e) {
+        return respond(HttpStatus.NOT_FOUND, ApiError.of(ApiError.NOT_FOUND, e.getMessage()));
     }
 
     @ExceptionHandler(BarbershopNotFound.class)

@@ -34,6 +34,16 @@ public interface AuthUseCases {
     /** Binds a client to the barbershop they picked, once it is checked to be open (DEC-AUTH-06). */
     BarbershopToken issueBarbershopToken(UUID clientId, UUID barbershopId);
 
+    /** Another service checks a user and copies its display data (DEC-AUTH-07, ADR-014). */
+    User findUser(UUID id);
+
+    /** No user with that id: 404. */
+    class UserNotFound extends RuntimeException {
+        public UserNotFound() {
+            super("The user does not exist");
+        }
+    }
+
     /** Does not exist, is SUSPENDED or CANCELLED: 404, the same for the three. */
     class BarbershopNotFound extends RuntimeException {
         public BarbershopNotFound() {
