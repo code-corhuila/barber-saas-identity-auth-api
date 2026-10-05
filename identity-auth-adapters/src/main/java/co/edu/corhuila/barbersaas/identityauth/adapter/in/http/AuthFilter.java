@@ -17,7 +17,8 @@ public class AuthFilter extends OncePerRequestFilter {
     public static final String CALLER_ATTRIBUTE = "auth.caller";
 
     /** Operations under /api/v1/auth/ that need a token; the rest of that path is how a token is obtained. */
-    private static final Set<String> PROTECTED_AUTH_PATHS = Set.of("/api/v1/auth/logout", "/api/v1/auth/barbers");
+    private static final Set<String> PROTECTED_AUTH_PATHS = Set.of("/api/v1/auth/logout", "/api/v1/auth/barbers",
+            "/api/v1/auth/barbershop-token");
 
     /** The caller the filter verified. Only called on routes the filter protects. */
     public static Caller caller(HttpServletRequest request) {
