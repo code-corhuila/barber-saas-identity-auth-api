@@ -28,6 +28,19 @@ public interface AuthUseCases {
 
     AuthResult login(String email, String password);
 
+    /** A token with role CLIENT and {@code barbershopId}; no refresh token (DEC-AUTH-06). */
+    record BarbershopToken(String accessToken, long expiresIn, UUID barbershopId) { }
+
+    /** Binds a client to the barbershop they picked, once it is checked to be open (DEC-AUTH-06). */
+    BarbershopToken issueBarbershopToken(UUID clientId, UUID barbershopId);
+
+    /** Does not exist, is SUSPENDED or CANCELLED: 404, the same for the three. */
+    class BarbershopNotFound extends RuntimeException {
+        public BarbershopNotFound() {
+            super("The barbershop does not exist");
+        }
+    }
+
     /** 401, with the same message whether the e-mail, the password or the account failed. */
     class InvalidCredentials extends RuntimeException {
         public InvalidCredentials() {
