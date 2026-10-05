@@ -21,6 +21,11 @@ public interface AuthUseCases {
     /** Step create-owner of the owner-onboarding saga (DEC-AUTH-04). */
     Created createOwner(CreateOwnerCommand command, String idempotencyKey);
 
+    record CreateBarberCommand(String fullName, String email, String password, String phone) { }
+
+    /** An owner adds a barber to their barbershop, taken from the owner's token (DEC-AUTH-05). */
+    Created createBarber(CreateBarberCommand command, UUID ownerBarbershopId, String idempotencyKey);
+
     AuthResult login(String email, String password);
 
     /** 401, with the same message whether the e-mail, the password or the account failed. */
