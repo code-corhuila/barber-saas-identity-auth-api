@@ -3,6 +3,7 @@ package co.edu.corhuila.barbersaas.identityauth.app;
 import co.edu.corhuila.barbersaas.identityauth.adapter.in.http.AuthFilter;
 import co.edu.corhuila.barbersaas.identityauth.adapter.in.http.CorrelationFilter;
 import co.edu.corhuila.barbersaas.identityauth.adapter.in.http.Rs256Verifier;
+import co.edu.corhuila.barbersaas.identityauth.adapter.out.http.HttpBarbershops;
 import co.edu.corhuila.barbersaas.identityauth.adapter.out.persistence.InMemoryUserRepository;
 import co.edu.corhuila.barbersaas.identityauth.adapter.out.persistence.JdbcUserRepository;
 import co.edu.corhuila.barbersaas.identityauth.adapter.out.persistence.UuidGenerator;
@@ -77,9 +78,11 @@ public class IdentityAuthConfiguration {
 
     @Bean
     AuthUseCases authUseCases(UserRepository users, Rs256TokenIssuer issuer, Database database,
-                              @Value("${BCRYPT_STRENGTH:10}") int strength) {
+                              @Value("${BCRYPT_STRENGTH:10}") int strength,
+                              @Value("${BARBERSHOP_API_URL:}") String barbershopApiUrl) {
         return new AuthService(users, new BCryptPasswordHasher(strength), issuer,
-                new OpaqueRefreshTokens(database.jdbc()), new UuidGenerator(), Clock.systemUTC());
+                new OpaqueRefreshTokens(database.jdbc()), new HttpBarbershops(barbershopApiUrl), new UuidGenerator(),
+                Clock.systemUTC());
     }
 
     @Bean
