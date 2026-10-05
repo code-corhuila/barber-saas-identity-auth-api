@@ -142,6 +142,11 @@ public class AuthService implements AuthUseCases {
         return new BarbershopToken(token.token(), token.expiresInSeconds(), barbershopId);
     }
 
+    @Override
+    public User findUser(UUID id) {
+        return users.findById(id).orElseThrow(UserNotFound::new);
+    }
+
     private AuthResult authenticate(User user, boolean created) {
         Instant now = clock.instant();
         TokenIssuer.IssuedToken access = tokens.issue(user, now);
