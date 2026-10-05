@@ -57,18 +57,11 @@ public class AuthController {
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestBody(required = false) RegisterRequest body) {
         List<FieldError> errors = new ArrayList<>();
-        if (idempotencyKey == null || idempotencyKey.length() < 8 || idempotencyKey.length() > 128) {
-            errors.add(new FieldError("Idempotency-Key", "required, between 8 and 128 characters"));
-        }
+        requireIdempotencyKey(errors, idempotencyKey);
         if (body == null) {
             throw new ValidationException("the body is required", errors);
         }
-        requireText(errors, "fullName", body.fullName(), 120);
-        requireText(errors, "email", body.email(), 150);
-        requireText(errors, "password", body.password(), 100);
-        if (body.phone() != null && body.phone().length() > 20) {
-            errors.add(new FieldError("phone", "at most 20 characters"));
-        }
+        requireAccountFields(errors, body.fullName(), body.email(), body.password(), body.phone());
         if (!errors.isEmpty()) {
             throw new ValidationException("the request is not valid", errors);
         }
@@ -102,7 +95,24 @@ public class AuthController {
         return Map.of("keys", List.of(keys.jwk()));
     }
 
-    private static void requireText(List<FieldError> errors, String field, String value, int max) {
+    static void requireIdempotencyKey(List<FieldError> errors, String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.length() < 8 || idempotencyKey.length() > 128) {
+            errors.add(new FieldError("Idempotency-Key", "required, between 8 and 128 characters"));
+        }
+    }
+
+    /** The fields every account is created with: register, owners and barbers. */
+    static void requireAccountFields(List<FieldError> errors, String fullName, String email, String password,
+                                     String phone) {
+        requireText(errors, "fullName", fullName, 120);
+        requireText(errors, "email", email, 150);
+        requireText(errors, "password", password, 100);
+        if (phone != null && phone.length() > 20) {
+            errors.add(new FieldError("phone", "at most 20 characters"));
+        }
+    }
+
+    static void requireText(List<FieldError> errors, String field, String value, int max) {
         if (value == null || value.isBlank()) {
             errors.add(new FieldError(field, "required"));
         } else if (value.length() > max) {
