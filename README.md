@@ -42,6 +42,7 @@ no Spring), `identity-auth-adapters` (HTTP, JDBC, BCrypt, RS256) and `identity-a
 | `POST /api/v1/auth/barbers` | Role `ADMIN_BARBERSHOP`; creates a `BARBER` in the barbershop of the owner's token (never from the body) with an initial password; 201, or 200 on a retry; 403 for any other role; 422 if the e-mail exists |
 | `POST /api/v1/auth/barbershop-token` | Role `CLIENT`; body `{barbershopId}`; checks the barbershop is `ACTIVE` or `TRIAL` with barbershop-api (`BARBERSHOP_API_URL`) and returns a one-hour `CLIENT` token with that `barbershopId`, no refresh token, nothing stored (`DEC-AUTH-06`); 403 for any other role; 404 if closed or unknown; 503 if barbershop-api does not answer |
 | `POST /internal/v1/owners` | Only the workflow's service token (`sub: barber-saas-workflow`), never routed by the gateway; creates the `ADMIN_BARBERSHOP` of a barbershop the onboarding saga just created; 201, or 200 on a retry; 403 for any other token; 422 if the e-mail exists |
+| `GET /internal/v1/users/{id}` | Only barbershop-api's service token (`sub: barber-saas-barbershop-api`), never routed by the gateway; returns `id`, `fullName`, `profilePhotoUrl`, `role`, `barbershopId`, `isActive` — never the e-mail, phone or hash (`DEC-AUTH-07`, ADR-014); 403 for any other token; 404 if unknown |
 | `GET /health` | liveness, no token |
 
 ### How to start it
