@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.AuthResult;
+import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.CreateOwnerCommand;
+import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.Created;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.IdempotencyKeyReused;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.InvalidCredentials;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.RegisterCommand;
@@ -124,6 +126,49 @@ class AuthServiceTest {
         users.byId.put(inactive.id(), inactive);
 
         assertThrows(InvalidCredentials.class, () -> service.login("old@example.com", "SecurePass123"));
+    }
+
+    @Test
+    void create_owner_makes_an_admin_of_the_given_barbershop_without_tokens() {
+        UUID barbershop = UUID.randomUUID();
+
+        Created owner = service.createOwner(owner("Andres@Example.com", barbershop), "saga-1:create-owner");
+
+        assertTrue(owner.created());
+        assertEquals(Role.ADMIN_BARBERSHOP, owner.user().role());
+        assertEquals(barbershop, owner.user().barbershopId());
+        assertEquals("andres@example.com", owner.user().email());
+        assertEquals("hashed:SecurePass123", users.byId.get(owner.user().id()).passwordHash());
+    }
+
+    @Test
+    void a_retried_saga_step_returns_the_same_owner() {
+        UUID barbershop = UUID.randomUUID();
+        Created first = service.createOwner(owner("andres@example.com", barbershop), "saga-1:create-owner");
+        Created retry = service.createOwner(owner("andres@example.com", barbershop), "saga-1:create-owner");
+
+        assertFalse(retry.created());
+        assertEquals(first.user().id(), retry.user().id());
+        assertEquals(1, users.byId.size());
+    }
+
+    @Test
+    void an_owner_with_an_email_already_registered_makes_the_saga_compensate() {
+        service.register(command("andres@example.com"), "key-00000001");
+
+        BusinessRuleViolation e = assertThrows(BusinessRuleViolation.class,
+                () -> service.createOwner(owner("ANDRES@example.com", UUID.randomUUID()), "saga-1:create-owner"));
+        assertEquals("The email is already registered", e.getMessage());
+    }
+
+    @Test
+    void an_owner_needs_a_barbershop() {
+        assertThrows(BusinessRuleViolation.class,
+                () -> service.createOwner(owner("andres@example.com", null), "saga-1:create-owner"));
+    }
+
+    private static CreateOwnerCommand owner(String email, UUID barbershopId) {
+        return new CreateOwnerCommand("Andres Rojas", email, "SecurePass123", null, barbershopId);
     }
 
     private static RegisterCommand command(String email) {

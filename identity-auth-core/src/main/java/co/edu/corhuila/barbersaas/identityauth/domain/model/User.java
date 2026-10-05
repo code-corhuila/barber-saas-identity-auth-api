@@ -49,6 +49,16 @@ public final class User {
         return new User(id, null, fullName, email, passwordHash, phone, null, Role.CLIENT, true, now);
     }
 
+    /**
+     * The owner of a barbershop the onboarding saga has just created (DEC-AUTH-04). The constructor
+     * refuses it without a barbershop (chk_app_user_tenant).
+     */
+    public static User newOwner(UUID id, UUID barbershopId, String fullName, String email, String passwordHash,
+                                String phone, Instant now) {
+        return new User(id, barbershopId, fullName, email, passwordHash, phone, null, Role.ADMIN_BARBERSHOP, true,
+                now);
+    }
+
     /** E-mails are compared case-insensitively (uq_app_user_email is on lower(email)). */
     public static String normalizeEmail(String email) {
         if (email == null) {
