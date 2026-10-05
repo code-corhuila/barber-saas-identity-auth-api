@@ -40,13 +40,15 @@ no Spring), `identity-auth-adapters` (HTTP, JDBC, BCrypt, RS256) and `identity-a
 | `POST /api/v1/auth/login` | 200 with tokens; 401 with the same message for any wrong credential |
 | `GET /api/v1/auth/jwks` | RFC 7517 key set |
 | `POST /api/v1/auth/barbers` | Role `ADMIN_BARBERSHOP`; creates a `BARBER` in the barbershop of the owner's token (never from the body) with an initial password; 201, or 200 on a retry; 403 for any other role; 422 if the e-mail exists |
+| `POST /api/v1/auth/barbershop-token` | Role `CLIENT`; body `{barbershopId}`; checks the barbershop is `ACTIVE` or `TRIAL` with barbershop-api (`BARBERSHOP_API_URL`) and returns a one-hour `CLIENT` token with that `barbershopId`, no refresh token, nothing stored (`DEC-AUTH-06`); 403 for any other role; 404 if closed or unknown; 503 if barbershop-api does not answer |
 | `POST /internal/v1/owners` | Only the workflow's service token (`sub: barber-saas-workflow`), never routed by the gateway; creates the `ADMIN_BARBERSHOP` of a barbershop the onboarding saga just created; 201, or 200 on a retry; 403 for any other token; 422 if the e-mail exists |
 | `GET /health` | liveness, no token |
 
 ### How to start it
 
 As part of the platform: `./scripts/up.sh dev` in `barber-saas-infra`. Alone, without a
-database (in-memory repository):
+database (in-memory repository); without `BARBERSHOP_API_URL`,
+`POST /api/v1/auth/barbershop-token` answers 503:
 
 ```bash
 mvn -B -DskipTests package
