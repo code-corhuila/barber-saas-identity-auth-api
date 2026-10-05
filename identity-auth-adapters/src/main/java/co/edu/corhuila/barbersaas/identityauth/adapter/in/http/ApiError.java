@@ -14,6 +14,7 @@ public record ApiError(String error, String message, List<FieldError> details, S
 
     public static final String VALIDATION_ERROR = "VALIDATION_ERROR";
     public static final String UNAUTHORIZED = "UNAUTHORIZED";
+    public static final String FORBIDDEN = "FORBIDDEN";
     public static final String NOT_FOUND = "NOT_FOUND";
     public static final String INVALID_STATUS_TRANSITION = "INVALID_STATUS_TRANSITION";
     public static final String BUSINESS_RULE_VIOLATION = "BUSINESS_RULE_VIOLATION";
@@ -40,6 +41,13 @@ public record ApiError(String error, String message, List<FieldError> details, S
 
         public List<FieldError> details() {
             return details;
+        }
+    }
+
+    /** Thrown by the controller when a valid token's role may not use the operation: always 403. */
+    public static class ForbiddenException extends RuntimeException {
+        public ForbiddenException() {
+            super("You are not allowed to perform this action");
         }
     }
 }
