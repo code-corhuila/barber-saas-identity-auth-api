@@ -7,12 +7,15 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.AuthResult;
+import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.BarbershopNotFound;
+import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.BarbershopToken;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.CreateBarberCommand;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.CreateOwnerCommand;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.Created;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.IdempotencyKeyReused;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.InvalidCredentials;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.RegisterCommand;
+import co.edu.corhuila.barbersaas.identityauth.application.port.out.Barbershops;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.PasswordHasher;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.TokenIssuer;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.UserRepository;
@@ -20,11 +23,14 @@ import co.edu.corhuila.barbersaas.identityauth.domain.model.DomainException.Busi
 import co.edu.corhuila.barbersaas.identityauth.domain.model.Role;
 import co.edu.corhuila.barbersaas.identityauth.domain.model.User;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,17 +38,27 @@ import org.junit.jupiter.api.Test;
 class AuthServiceTest {
 
     private FakeUsers users;
+    private FakeBarbershops barbershops;
     private AuthService service;
 
     @BeforeEach
     void setUp() {
         users = new FakeUsers();
+        barbershops = new FakeBarbershops();
         PasswordHasher hasher = new PasswordHasher() {
             public String hash(String raw) { return "hashed:" + raw; }
             public boolean matches(String raw, String hash) { return hash.equals("hashed:" + raw); }
         };
-        TokenIssuer tokens = (user, now) -> new TokenIssuer.IssuedToken("access-" + user.id(), 86_400);
-        service = new AuthService(users, hasher, tokens, (userId, now) -> "refresh-" + userId,
+        TokenIssuer tokens = new TokenIssuer() {
+            public IssuedToken issue(User user, Instant now) {
+                return new IssuedToken("access-" + user.id(), 86_400);
+            }
+
+            public IssuedToken issueBound(User client, UUID barbershopId, Instant now, Duration lifetime) {
+                return new IssuedToken("bound-" + client.id() + "-" + barbershopId, lifetime.toSeconds());
+            }
+        };
+        service = new AuthService(users, hasher, tokens, (userId, now) -> "refresh-" + userId, barbershops,
                 UUID::randomUUID, Clock.fixed(Instant.parse("2026-10-02T12:00:00Z"), ZoneOffset.UTC));
     }
 
@@ -207,6 +223,43 @@ class AuthServiceTest {
                 () -> service.createBarber(barber("juan@example.com"), UUID.randomUUID(), "key-barber-01"));
     }
 
+    @Test
+    void a_client_gets_a_one_hour_token_bound_to_an_open_barbershop() {
+        UUID client = service.register(command("maria@example.com"), "key-00000001").user().id();
+        UUID barbershop = barbershops.open();
+
+        BarbershopToken token = service.issueBarbershopToken(client, barbershop);
+
+        assertEquals("bound-" + client + "-" + barbershop, token.accessToken());
+        assertEquals(3_600, token.expiresIn());
+        assertEquals(barbershop, token.barbershopId());
+    }
+
+    @Test
+    void a_closed_or_unknown_barbershop_is_not_found() {
+        UUID client = service.register(command("maria@example.com"), "key-00000001").user().id();
+
+        assertThrows(BarbershopNotFound.class, () -> service.issueBarbershopToken(client, UUID.randomUUID()));
+    }
+
+    @Test
+    void an_unanswered_barbershop_check_is_unavailable_not_a_token() {
+        UUID client = service.register(command("maria@example.com"), "key-00000001").user().id();
+        UUID barbershop = barbershops.open();
+        barbershops.down = true;
+
+        assertThrows(Barbershops.Unavailable.class, () -> service.issueBarbershopToken(client, barbershop));
+    }
+
+    @Test
+    void only_an_active_client_account_gets_a_bound_token() {
+        UUID barber = service.createBarber(barber("juan@example.com"), UUID.randomUUID(), "key-barber-01").user().id();
+        UUID barbershop = barbershops.open();
+
+        assertThrows(InvalidCredentials.class, () -> service.issueBarbershopToken(barber, barbershop));
+        assertThrows(InvalidCredentials.class, () -> service.issueBarbershopToken(UUID.randomUUID(), barbershop));
+    }
+
     private static CreateBarberCommand barber(String email) {
         return new CreateBarberCommand("Juan Perez", email, "Inicial2026", "+573009876543");
     }
@@ -217,6 +270,24 @@ class AuthServiceTest {
 
     private static RegisterCommand command(String email) {
         return new RegisterCommand("Maria Garcia", email, "SecurePass123", "+573001234567");
+    }
+
+    private static final class FakeBarbershops implements Barbershops {
+        final Set<UUID> open = new HashSet<>();
+        boolean down;
+
+        UUID open() {
+            UUID id = UUID.randomUUID();
+            open.add(id);
+            return id;
+        }
+
+        public boolean isOpen(UUID barbershopId) {
+            if (down) {
+                throw new Unavailable("barbershop-api did not answer");
+            }
+            return open.contains(barbershopId);
+        }
     }
 
     private static final class FakeUsers implements UserRepository {
