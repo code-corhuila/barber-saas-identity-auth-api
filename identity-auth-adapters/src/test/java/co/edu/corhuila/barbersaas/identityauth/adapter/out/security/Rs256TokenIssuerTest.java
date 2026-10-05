@@ -76,4 +76,22 @@ class Rs256TokenIssuerTest {
         assertEquals("sig", issuer.jwk().get("use"));
         assertEquals("test-1", issuer.jwk().get("kid"));
     }
+
+    @Test
+    void a_bound_token_carries_the_picked_barbershop_and_its_own_lifetime() throws Exception {
+        UUID barbershop = UUID.randomUUID();
+        User client = new User(UUID.randomUUID(), null, "Maria", "maria@example.com", "hash", null, null,
+                Role.CLIENT, true, Instant.now());
+        Instant now = Instant.now();
+
+        var bound = issuer.issueBound(client, barbershop, now, java.time.Duration.ofHours(1));
+
+        assertEquals(3_600, bound.expiresInSeconds());
+        Caller caller = new Rs256Verifier(issuer.publicKeyPem()).verify(bound.token(), now);
+        assertEquals(client.id().toString(), caller.subject());
+        assertEquals("CLIENT", caller.role());
+        assertEquals(barbershop, caller.barbershopId());
+        assertThrows(Exception.class,
+                () -> new Rs256Verifier(issuer.publicKeyPem()).verify(bound.token(), now.plusSeconds(7_200)));
+    }
 }
