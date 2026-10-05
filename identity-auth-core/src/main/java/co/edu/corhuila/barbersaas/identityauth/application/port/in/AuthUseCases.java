@@ -1,6 +1,7 @@
 package co.edu.corhuila.barbersaas.identityauth.application.port.in;
 
 import co.edu.corhuila.barbersaas.identityauth.domain.model.User;
+import java.util.UUID;
 
 /** What identity-auth offers (auth-service.yaml). */
 public interface AuthUseCases {
@@ -10,7 +11,15 @@ public interface AuthUseCases {
     /** {@code created} is false when the same Idempotency-Key is retried: 200 instead of 201. */
     record AuthResult(String accessToken, String refreshToken, long expiresIn, User user, boolean created) { }
 
+    record CreateOwnerCommand(String fullName, String email, String password, String phone, UUID barbershopId) { }
+
+    /** An account created by someone else: no tokens. {@code created} is false on a retry (200 instead of 201). */
+    record Created(User user, boolean created) { }
+
     AuthResult register(RegisterCommand command, String idempotencyKey);
+
+    /** Step create-owner of the owner-onboarding saga (DEC-AUTH-04). */
+    Created createOwner(CreateOwnerCommand command, String idempotencyKey);
 
     AuthResult login(String email, String password);
 
