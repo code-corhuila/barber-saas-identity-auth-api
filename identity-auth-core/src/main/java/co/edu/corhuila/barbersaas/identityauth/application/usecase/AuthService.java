@@ -1,6 +1,7 @@
 package co.edu.corhuila.barbersaas.identityauth.application.usecase;
 
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases;
+import co.edu.corhuila.barbersaas.identityauth.application.port.out.Barbershops;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.IdGenerator;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.PasswordHasher;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.RefreshTokens;
@@ -9,11 +10,13 @@ import co.edu.corhuila.barbersaas.identityauth.application.port.out.UserReposito
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.UserRepository.IdempotencyRecord;
 import co.edu.corhuila.barbersaas.identityauth.domain.model.DomainException.BusinessRuleViolation;
 import co.edu.corhuila.barbersaas.identityauth.domain.model.PasswordPolicy;
+import co.edu.corhuila.barbersaas.identityauth.domain.model.Role;
 import co.edu.corhuila.barbersaas.identityauth.domain.model.User;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Optional;
@@ -25,21 +28,25 @@ public class AuthService implements AuthUseCases {
     static final String REGISTER_OPERATION = "POST /api/v1/auth/register";
     static final String CREATE_OWNER_OPERATION = "POST /internal/v1/owners";
     static final String CREATE_BARBER_OPERATION = "POST /api/v1/auth/barbers";
+    /** Short because a stateless token cannot be revoked and a barbershop can be suspended (DEC-AUTH-06). */
+    static final Duration BARBERSHOP_TOKEN_LIFETIME = Duration.ofHours(1);
     private static final char SEPARATOR = 0;
 
     private final UserRepository users;
     private final PasswordHasher hasher;
     private final TokenIssuer tokens;
     private final RefreshTokens refreshTokens;
+    private final Barbershops barbershops;
     private final IdGenerator ids;
     private final Clock clock;
 
     public AuthService(UserRepository users, PasswordHasher hasher, TokenIssuer tokens,
-                       RefreshTokens refreshTokens, IdGenerator ids, Clock clock) {
+                       RefreshTokens refreshTokens, Barbershops barbershops, IdGenerator ids, Clock clock) {
         this.users = users;
         this.hasher = hasher;
         this.tokens = tokens;
         this.refreshTokens = refreshTokens;
+        this.barbershops = barbershops;
         this.ids = ids;
         this.clock = clock;
     }
@@ -115,6 +122,24 @@ public class AuthService implements AuthUseCases {
                 .filter(u -> password != null && hasher.matches(password, u.passwordHash()))
                 .orElseThrow(InvalidCredentials::new);
         return authenticate(user, false);
+    }
+
+    /**
+     * The caller's token already says CLIENT; the account is read again so a deactivated one gets
+     * nothing. Nothing is stored: the binding lives only in the token (DEC-AUTH-06).
+     */
+    @Override
+    public BarbershopToken issueBarbershopToken(UUID clientId, UUID barbershopId) {
+        User client = users.findById(clientId)
+                .filter(User::active)
+                .filter(u -> u.role() == Role.CLIENT)
+                .orElseThrow(InvalidCredentials::new);
+        if (!barbershops.isOpen(barbershopId)) {
+            throw new BarbershopNotFound();
+        }
+        TokenIssuer.IssuedToken token = tokens.issueBound(client, barbershopId, clock.instant(),
+                BARBERSHOP_TOKEN_LIFETIME);
+        return new BarbershopToken(token.token(), token.expiresInSeconds(), barbershopId);
     }
 
     private AuthResult authenticate(User user, boolean created) {
