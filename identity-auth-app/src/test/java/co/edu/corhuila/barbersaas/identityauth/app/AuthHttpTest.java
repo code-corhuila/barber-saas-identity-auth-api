@@ -87,6 +87,12 @@ class AuthHttpTest {
     }
 
     @Test
+    void an_internal_route_needs_a_token_even_though_the_gateway_never_routes_it() throws Exception {
+        http.perform(post("/internal/v1/anything")).andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("UNAUTHORIZED"));
+    }
+
+    @Test
     void an_unknown_route_answers_with_the_envelope() throws Exception {
         http.perform(get("/api/v1/auth/nothing")).andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("NOT_FOUND"));
