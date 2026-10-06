@@ -47,13 +47,13 @@ no Spring), `identity-auth-adapters` (HTTP, JDBC, BCrypt, RS256) and `identity-a
 
 ### How to start it
 
-As part of the platform: `./scripts/up.sh dev` in `barber-saas-infra`. Alone, without a
+As part of the platform: `./scripts/up.sh dev` in `barber-saas-infra-postgres`. Alone, without a
 database (in-memory repository); without `BARBERSHOP_API_URL`,
 `POST /api/v1/auth/barbershop-token` answers 503:
 
 ```bash
 mvn -B -DskipTests package
-JWT_PRIVATE_KEY="$(cat ../barber-saas-infra/keys/jwt-private.pem)" java -jar identity-auth-app/target/identity-auth-app-0.1.0.jar
+JWT_PRIVATE_KEY="$(cat ../barber-saas-infra-postgres/keys/jwt-private.pem)" java -jar identity-auth-app/target/identity-auth-app-0.1.0.jar
 ```
 
 ### Where the data is
