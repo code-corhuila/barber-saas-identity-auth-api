@@ -1,4 +1,4 @@
-# This service only. barber-saas-infra includes this file to compose the platform.
+# This service only. barber-saas-infra-postgres includes this file to compose the platform.
 services:
   identity-auth-api:
     build:
@@ -6,12 +6,12 @@ services:
       dockerfile: deploy/Dockerfile
     environment:
       PORT: "8080"
-      # The single PostgreSQL instance of barber-saas-infra, with this domain's own user (Annex J J.7).
+      # The single PostgreSQL instance of barber-saas-infra-postgres, with this domain's own user (Annex J J.7).
       DATABASE_URL: jdbc:postgresql://postgres:5432/${PG_DATABASE:?set PG_DATABASE}
       DATABASE_USER: identity_auth_app
       DATABASE_PASSWORD: ${IDENTITY_AUTH_APP_PASSWORD:?set IDENTITY_AUTH_APP_PASSWORD}
-      # Only identity-auth holds the private key; barber-saas-infra/scripts/dev-keys.sh writes a development one.
-      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:?run barber-saas-infra/scripts/dev-keys.sh}
+      # Only identity-auth holds the private key; barber-saas-infra-postgres/scripts/dev-keys.sh writes a development one.
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:?run barber-saas-infra-postgres/scripts/dev-keys.sh}
       DB_POOL_MAX: "10"
       # Checks that a barbershop a client picks is open before binding a token to it (DEC-AUTH-06).
       BARBERSHOP_API_URL: http://barbershop-api:8080
