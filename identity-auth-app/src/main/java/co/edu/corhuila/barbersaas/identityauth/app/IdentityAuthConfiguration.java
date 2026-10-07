@@ -4,15 +4,24 @@ import co.edu.corhuila.barbersaas.identityauth.adapter.in.http.AuthFilter;
 import co.edu.corhuila.barbersaas.identityauth.adapter.in.http.CorrelationFilter;
 import co.edu.corhuila.barbersaas.identityauth.adapter.in.http.Rs256Verifier;
 import co.edu.corhuila.barbersaas.identityauth.adapter.out.http.HttpBarbershops;
+import co.edu.corhuila.barbersaas.identityauth.adapter.out.persistence.InMemoryPasswordResets;
 import co.edu.corhuila.barbersaas.identityauth.adapter.out.persistence.InMemoryUserRepository;
+import co.edu.corhuila.barbersaas.identityauth.adapter.out.persistence.JdbcPasswordResets;
 import co.edu.corhuila.barbersaas.identityauth.adapter.out.persistence.JdbcUserRepository;
 import co.edu.corhuila.barbersaas.identityauth.adapter.out.persistence.UuidGenerator;
 import co.edu.corhuila.barbersaas.identityauth.adapter.out.security.BCryptPasswordHasher;
 import co.edu.corhuila.barbersaas.identityauth.adapter.out.security.OpaqueRefreshTokens;
+import co.edu.corhuila.barbersaas.identityauth.adapter.out.security.RandomResetCodes;
 import co.edu.corhuila.barbersaas.identityauth.adapter.out.security.Rs256TokenIssuer;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases;
+import co.edu.corhuila.barbersaas.identityauth.application.port.in.OutboxRelayUseCases;
+import co.edu.corhuila.barbersaas.identityauth.application.port.in.PasswordResetUseCases;
+import co.edu.corhuila.barbersaas.identityauth.application.port.out.OutboxStore;
+import co.edu.corhuila.barbersaas.identityauth.application.port.out.PasswordResets;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.UserRepository;
 import co.edu.corhuila.barbersaas.identityauth.application.usecase.AuthService;
+import co.edu.corhuila.barbersaas.identityauth.application.usecase.PasswordResetService;
+import co.edu.corhuila.barbersaas.identityauth.application.usecase.RelayOutbox;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -83,6 +92,32 @@ public class IdentityAuthConfiguration {
         return new AuthService(users, new BCryptPasswordHasher(strength), issuer,
                 new OpaqueRefreshTokens(database.jdbc()), new HttpBarbershops(barbershopApiUrl), new UuidGenerator(),
                 Clock.systemUTC());
+    }
+
+    /**
+     * One store for codes and outbox (DEC-AUTH-08): a code and its event commit together. Without a
+     * database it lives next to InMemoryUserRepository, whose users it updates.
+     */
+    @Bean
+    PasswordResets passwordResets(Database database, UserRepository users, ObjectMapper json) {
+        return database.template().<PasswordResets>map(t -> new JdbcPasswordResets(t,
+                        new org.springframework.transaction.support.TransactionTemplate(
+                                new org.springframework.jdbc.datasource.DataSourceTransactionManager(t.getDataSource())),
+                        json))
+                .orElseGet(() -> new InMemoryPasswordResets((InMemoryUserRepository) users));
+    }
+
+    @Bean
+    PasswordResetUseCases passwordResetUseCases(UserRepository users, PasswordResets resets,
+                                                @Value("${BCRYPT_STRENGTH:10}") int strength) {
+        return new PasswordResetService(users, resets, new BCryptPasswordHasher(strength), new RandomResetCodes(),
+                new UuidGenerator(), Clock.systemUTC());
+    }
+
+    /** Both store implementations are also the outbox of the relay. */
+    @Bean
+    OutboxRelayUseCases outboxRelayUseCases(PasswordResets resets) {
+        return new RelayOutbox((OutboxStore) resets, Clock.systemUTC());
     }
 
     @Bean
