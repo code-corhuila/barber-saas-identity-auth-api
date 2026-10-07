@@ -36,4 +36,9 @@ public class InMemoryUserRepository implements UserRepository {
         users.put(user.id(), user);
         keys.put(key.operation() + " " + key.key(), new StoredKey(user.id(), key.requestHash()));
     }
+
+    /** A new password of an existing user (InMemoryPasswordResets). */
+    void replace(User user) {
+        users.put(user.id(), user);
+    }
 }
