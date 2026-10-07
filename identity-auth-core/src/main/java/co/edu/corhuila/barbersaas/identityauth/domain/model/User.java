@@ -65,6 +65,12 @@ public final class User {
         return new User(id, barbershopId, fullName, email, passwordHash, phone, null, Role.BARBER, true, now);
     }
 
+    /** The same account with a new password hash (password reset, HU-AUTH-002). */
+    public User withPasswordHash(String newPasswordHash) {
+        return new User(id, barbershopId, fullName, email, newPasswordHash, phone, profilePhotoUrl, role, active,
+                createdAt);
+    }
+
     /** E-mails are compared case-insensitively (uq_app_user_email is on lower(email)). */
     public static String normalizeEmail(String email) {
         if (email == null) {
