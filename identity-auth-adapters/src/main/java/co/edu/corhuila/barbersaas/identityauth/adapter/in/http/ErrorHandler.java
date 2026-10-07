@@ -6,6 +6,7 @@ import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.IdempotencyKeyReused;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.InvalidCredentials;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.UserNotFound;
+import co.edu.corhuila.barbersaas.identityauth.application.port.in.OutboxRelayUseCases.OutboxEventNotFound;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.Barbershops;
 import co.edu.corhuila.barbersaas.identityauth.domain.model.DomainException.BusinessRuleViolation;
 import org.slf4j.Logger;
@@ -58,6 +59,11 @@ public class ErrorHandler {
 
     @ExceptionHandler(UserNotFound.class)
     ResponseEntity<ApiError> userNotFound(UserNotFound e) {
+        return respond(HttpStatus.NOT_FOUND, ApiError.of(ApiError.NOT_FOUND, e.getMessage()));
+    }
+
+    @ExceptionHandler(OutboxEventNotFound.class)
+    ResponseEntity<ApiError> outboxEventNotFound(OutboxEventNotFound e) {
         return respond(HttpStatus.NOT_FOUND, ApiError.of(ApiError.NOT_FOUND, e.getMessage()));
     }
 
