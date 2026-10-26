@@ -1,5 +1,6 @@
 package co.edu.corhuila.barbersaas.identityauth.adapter.out.persistence;
 
+import co.edu.corhuila.barbersaas.identityauth.application.port.out.EmailVerifications;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.OutboxEvent;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.OutboxStore;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.PasswordResets;
@@ -13,7 +14,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /** Used when DATABASE_URL is empty, next to InMemoryUserRepository; there are no refresh tokens to revoke. */
-public class InMemoryPasswordResets implements PasswordResets, OutboxStore {
+public class InMemoryPasswordResets implements PasswordResets, EmailVerifications, OutboxStore {
 
     private record Row(OutboxEvent event, Instant publishedAt, Instant failedAt, String lastError) { }
 
@@ -21,6 +22,7 @@ public class InMemoryPasswordResets implements PasswordResets, OutboxStore {
     private final List<ResetCode> codes = new ArrayList<>();
     private final Map<UUID, Instant> usedAt = new LinkedHashMap<>();
     private final Map<UUID, Row> outbox = new LinkedHashMap<>();
+    private final List<VerificationCode> verifications = new ArrayList<>();
 
     public InMemoryPasswordResets(InMemoryUserRepository users) {
         this.users = users;
@@ -49,6 +51,38 @@ public class InMemoryPasswordResets implements PasswordResets, OutboxStore {
             return false;
         }
         users.replace(user);
+        return true;
+    }
+
+    @Override
+    public synchronized void saveVerification(VerificationCode code, OutboxEvent event) {
+        verifications.stream().filter(c -> c.userId().equals(code.userId()))
+                .forEach(c -> usedAt.putIfAbsent(c.id(), code.createdAt()));
+        verifications.add(code);
+        outbox.put(event.id(), new Row(event, null, null, null));
+    }
+
+    @Override
+    public synchronized List<VerificationCode> usableVerifications(UUID userId, Instant now) {
+        return verifications.stream()
+                .filter(c -> c.userId().equals(userId) && !usedAt.containsKey(c.id()) && c.expiresAt().isAfter(now))
+                .sorted(Comparator.comparing(VerificationCode::createdAt).reversed()).toList();
+    }
+
+    @Override
+    public synchronized int verificationsSince(UUID userId, Instant since) {
+        return (int) verifications.stream()
+                .filter(c -> c.userId().equals(userId) && !c.createdAt().isBefore(since)).count();
+    }
+
+    @Override
+    public synchronized boolean consumeVerification(UUID codeId, UUID userId, Instant now) {
+        boolean usable = verifications.stream().anyMatch(c -> c.id().equals(codeId) && c.userId().equals(userId)
+                && c.expiresAt().isAfter(now));
+        if (!usable || usedAt.putIfAbsent(codeId, now) != null) {
+            return false;
+        }
+        users.findById(userId).ifPresent(u -> users.replace(u.verifiedAt(now)));
         return true;
     }
 

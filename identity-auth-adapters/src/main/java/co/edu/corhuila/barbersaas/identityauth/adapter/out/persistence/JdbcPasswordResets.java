@@ -1,5 +1,6 @@
 package co.edu.corhuila.barbersaas.identityauth.adapter.out.persistence;
 
+import co.edu.corhuila.barbersaas.identityauth.application.port.out.EmailVerifications;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.OutboxEvent;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.OutboxStore;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.PasswordResets;
@@ -19,10 +20,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * identity_auth.password_reset_token and identity_auth.outbox_event. A code and its event commit in
- * one transaction, and so do a used code, the new password hash and the revoked refresh tokens.
+ * identity_auth.password_reset_token, identity_auth.email_verification_code and identity_auth.outbox_event.
+ * A code and its event commit in one transaction, and so do a used code and what it changes.
  */
-public class JdbcPasswordResets implements PasswordResets, OutboxStore {
+public class JdbcPasswordResets implements PasswordResets, EmailVerifications, OutboxStore {
 
     private final JdbcTemplate jdbc;
     private final TransactionTemplate tx;
@@ -42,12 +43,62 @@ public class JdbcPasswordResets implements PasswordResets, OutboxStore {
             jdbc.update("INSERT INTO identity_auth.password_reset_token (id, user_id, code_hash, expires_at, created_at) "
                             + "VALUES (?, ?, ?, ?, ?)", code.id(), code.userId(), code.codeHash(),
                     Timestamp.from(code.expiresAt()), Timestamp.from(code.createdAt()));
-            String correlationId = Optional.ofNullable(MDC.get("correlationId")).orElse("none");
-            jdbc.update("INSERT INTO identity_auth.outbox_event (id, aggregate_type, aggregate_id, event_type, payload, "
-                            + "correlation_id, occurred_at) VALUES (?, ?, ?, ?, ?::jsonb, ?, ?)",
-                    event.id(), OutboxEvent.AGGREGATE_TYPE, event.aggregateId(), event.type(), toJson(event.payload()),
-                    correlationId, Timestamp.from(event.occurredAt()));
+            insertEvent(event);
         });
+    }
+
+    @Override
+    public void saveVerification(VerificationCode code, OutboxEvent event) {
+        tx.executeWithoutResult(status -> {
+            jdbc.update("UPDATE identity_auth.email_verification_code SET used_at = ? "
+                    + "WHERE user_id = ? AND used_at IS NULL", Timestamp.from(code.createdAt()), code.userId());
+            jdbc.update("INSERT INTO identity_auth.email_verification_code (id, user_id, code_hash, expires_at, "
+                            + "created_at) VALUES (?, ?, ?, ?, ?)", code.id(), code.userId(), code.codeHash(),
+                    Timestamp.from(code.expiresAt()), Timestamp.from(code.createdAt()));
+            insertEvent(event);
+        });
+    }
+
+    @Override
+    public List<VerificationCode> usableVerifications(UUID userId, Instant now) {
+        return jdbc.query("SELECT id, user_id, code_hash, expires_at, created_at "
+                        + "FROM identity_auth.email_verification_code "
+                        + "WHERE user_id = ? AND used_at IS NULL AND expires_at > ? ORDER BY created_at DESC",
+                (rs, n) -> new VerificationCode(rs.getObject("id", UUID.class), rs.getObject("user_id", UUID.class),
+                        rs.getString("code_hash"), rs.getTimestamp("expires_at").toInstant(),
+                        rs.getTimestamp("created_at").toInstant()),
+                userId, Timestamp.from(now));
+    }
+
+    @Override
+    public int verificationsSince(UUID userId, Instant since) {
+        Integer count = jdbc.queryForObject("SELECT count(*) FROM identity_auth.email_verification_code "
+                + "WHERE user_id = ? AND created_at >= ?", Integer.class, userId, Timestamp.from(since));
+        return count == null ? 0 : count;
+    }
+
+    @Override
+    public boolean consumeVerification(UUID codeId, UUID userId, Instant now) {
+        Boolean consumed = tx.execute(status -> {
+            Timestamp at = Timestamp.from(now);
+            int used = jdbc.update("UPDATE identity_auth.email_verification_code SET used_at = ? "
+                    + "WHERE id = ? AND user_id = ? AND used_at IS NULL AND expires_at > ?", at, codeId, userId, at);
+            if (used == 0) {
+                return false;
+            }
+            jdbc.update("UPDATE identity_auth.app_user SET email_verified_at = ?, updated_at = ? WHERE id = ?",
+                    at, at, userId);
+            return true;
+        });
+        return Boolean.TRUE.equals(consumed);
+    }
+
+    private void insertEvent(OutboxEvent event) {
+        String correlationId = Optional.ofNullable(MDC.get("correlationId")).orElse("none");
+        jdbc.update("INSERT INTO identity_auth.outbox_event (id, aggregate_type, aggregate_id, event_type, payload, "
+                        + "correlation_id, occurred_at) VALUES (?, ?, ?, ?, ?::jsonb, ?, ?)",
+                event.id(), OutboxEvent.AGGREGATE_TYPE, event.aggregateId(), event.type(), toJson(event.payload()),
+                correlationId, Timestamp.from(event.occurredAt()));
     }
 
     @Override
@@ -69,8 +120,8 @@ public class JdbcPasswordResets implements PasswordResets, OutboxStore {
             if (used == 0) {
                 return false;
             }
-            jdbc.update("UPDATE identity_auth.app_user SET password_hash = ?, updated_at = ? WHERE id = ?",
-                    user.passwordHash(), at, user.id());
+            jdbc.update("UPDATE identity_auth.app_user SET password_hash = ?, updated_at = ?, "
+                    + "email_verified_at = COALESCE(email_verified_at, ?) WHERE id = ?", user.passwordHash(), at, at, user.id());
             jdbc.update("UPDATE identity_auth.refresh_token SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL",
                     at, user.id());
             return true;
