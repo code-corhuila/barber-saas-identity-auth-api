@@ -20,8 +20,8 @@ public interface PasswordResets {
     List<ResetCode> usable(UUID userId, Instant now);
 
     /**
-     * In ONE transaction: marks the code used, stores the new password hash of {@code user} and revokes
-     * every refresh token of the user. False when the code was used meanwhile (single use).
+     * In ONE transaction: marks the code used, stores the new password hash of {@code user} (and its
+     * verified e-mail, ADR-018) and revokes every refresh token of the user. False when the code was used meanwhile (single use).
      */
     boolean consume(UUID codeId, User user, Instant now);
 }

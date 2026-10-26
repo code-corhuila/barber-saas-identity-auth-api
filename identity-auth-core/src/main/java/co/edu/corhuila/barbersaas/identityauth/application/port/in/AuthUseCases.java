@@ -17,7 +17,8 @@ public interface AuthUseCases {
     /** An account created by someone else: no tokens. {@code created} is false on a retry (200 instead of 201). */
     record Created(User user, boolean created) { }
 
-    AuthResult register(RegisterCommand command, String idempotencyKey);
+    /** The account is unverified and a code goes to its e-mail; no tokens until it is confirmed (DEC-AUTH-09). */
+    Created register(RegisterCommand command, String idempotencyKey);
 
     /** Step create-owner of the owner-onboarding saga (DEC-AUTH-04). */
     Created createOwner(CreateOwnerCommand command, String idempotencyKey);
@@ -28,6 +29,27 @@ public interface AuthUseCases {
     Created createBarber(CreateBarberCommand command, UUID ownerBarbershopId, String idempotencyKey);
 
     AuthResult login(String email, String password);
+
+    /** HU-AUTH-005: rotates the refresh token (single use) and issues a new access token. */
+    AuthResult refresh(String refreshToken);
+
+    /** HU-AUTH-005: revokes one session, or every session of the user with {@code allDevices}. */
+    void logout(UUID userId, String refreshToken, boolean allDevices);
+
+    /** DEC-AUTH-09: verifies the account with the e-mailed code and signs it in. */
+    AuthResult confirmEmail(String email, String code);
+
+    /** DEC-AUTH-09: a new code for an unverified account, within the limits; silent otherwise. */
+    void resendVerification(String email);
+
+    /** HU-AUTH-006: the account of the token. */
+    User me(UUID userId);
+
+    /** HU-AUTH-006: a null field is left as it is; an empty phone removes it. */
+    User updateMe(UUID userId, String fullName, String phone, boolean phoneSent);
+
+    /** HU-AUTH-006: needs the current password; every other session is closed. */
+    void changePassword(UUID userId, String currentPassword, String newPassword, String keepRefreshToken);
 
     /** A token with role CLIENT and {@code barbershopId}; no refresh token (DEC-AUTH-06). */
     record BarbershopToken(String accessToken, long expiresIn, UUID barbershopId) { }
@@ -52,6 +74,13 @@ public interface AuthUseCases {
     class BarbershopNotFound extends RuntimeException {
         public BarbershopNotFound() {
             super("The barbershop does not exist");
+        }
+    }
+
+    /** 403: the password is right but the e-mail is not verified yet (DEC-AUTH-09). */
+    class EmailNotVerified extends RuntimeException {
+        public EmailNotVerified() {
+            super("Verify your e-mail before signing in");
         }
     }
 
