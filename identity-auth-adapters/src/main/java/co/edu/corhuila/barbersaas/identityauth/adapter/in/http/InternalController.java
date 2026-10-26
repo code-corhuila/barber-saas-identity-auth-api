@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -34,8 +35,15 @@ public class InternalController {
     /** The only caller of createOwner: the owner-onboarding saga (DEC-AUTH-04). */
     static final String WORKFLOW = "barber-saas-workflow";
 
-    /** The only caller of getInternalUser: barbershop, when an owner creates a barber profile (ADR-014). */
+    /** Callers of getUser: barbershop for a barber profile (ADR-014), appointment for a review (DEC-APPT-11). */
     static final String BARBERSHOP_API = "barber-saas-barbershop-api";
+    static final String APPOINTMENT_API = "barber-saas-appointment-api";
+
+    /** The only caller of listOwners: platform-admin, for the plan notices (DEC-AUTH-10). */
+    static final String PLATFORM_ADMIN_API = "barber-saas-platform-admin-api";
+
+    /** The only caller of getContact: notifications, for the e-mailed reminders (DEC-AUTH-10). */
+    static final String NOTIFICATIONS_API = "barber-saas-notifications-api";
 
     /** What another domain may know of a user (DEC-AUTH-07): never the e-mail, phone or hash. */
     public record InternalUser(UUID id, String fullName, String profilePhotoUrl, String role, UUID barbershopId,
@@ -45,6 +53,15 @@ public class InternalController {
                     u.active());
         }
     }
+
+    /** A user's e-mail for a notice, to the one caller each read allows (DEC-AUTH-10). */
+    public record Contact(UUID userId, String fullName, String email) {
+        static Contact of(User u) {
+            return new Contact(u.id(), u.fullName(), u.email());
+        }
+    }
+
+    public record Contacts(List<Contact> data) { }
 
     public record CreateOwnerRequest(String fullName, String email, String password, String phone,
                                      UUID barbershopId) { }
@@ -57,10 +74,30 @@ public class InternalController {
 
     @GetMapping("/users/{id}")
     public InternalUser getUser(HttpServletRequest request, @PathVariable UUID id) {
-        if (!AuthFilter.caller(request).isService(BARBERSHOP_API)) {
+        Caller caller = AuthFilter.caller(request);
+        if (!caller.isService(BARBERSHOP_API) && !caller.isService(APPOINTMENT_API)) {
             throw new ForbiddenException();
         }
         return InternalUser.of(auth.findUser(id));
+    }
+
+    @GetMapping("/users/{id}/contact")
+    public Contact getContact(HttpServletRequest request, @PathVariable UUID id) {
+        if (!AuthFilter.caller(request).isService(NOTIFICATIONS_API)) {
+            throw new ForbiddenException();
+        }
+        return Contact.of(auth.findUser(id));
+    }
+
+    @GetMapping("/owners")
+    public Contacts listOwners(HttpServletRequest request, @RequestParam(required = false) UUID barbershopId) {
+        if (!AuthFilter.caller(request).isService(PLATFORM_ADMIN_API)) {
+            throw new ForbiddenException();
+        }
+        if (barbershopId == null) {
+            throw new ValidationException("the request is not valid", List.of(new FieldError("barbershopId", "required")));
+        }
+        return new Contacts(auth.findOwners(barbershopId).stream().map(Contact::of).toList());
     }
 
     @PostMapping("/owners")
