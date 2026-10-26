@@ -125,6 +125,10 @@ class PasswordResetServiceTest {
             return users.values().stream().filter(u -> u.email().equals(email)).findFirst();
         }
 
+        public void update(User user, java.time.Instant at) {
+            users.put(user.id(), user);
+        }
+
         public java.util.List<User> findActiveOwners(UUID barbershopId) {
             return java.util.List.of();
         }
