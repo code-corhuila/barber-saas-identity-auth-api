@@ -6,8 +6,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.security.KeyPairGenerator;
-import java.util.Base64;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -30,15 +28,12 @@ class AuthHttpTest {
     private MockMvc http;
 
     @DynamicPropertySource
-    static void privateKey(DynamicPropertyRegistry registry) throws Exception {
-        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
-        generator.initialize(2048);
-        String pem = "-----BEGIN PRIVATE KEY-----\n"
-                + Base64.getMimeEncoder().encodeToString(generator.generateKeyPair().getPrivate().getEncoded())
-                + "\n-----END PRIVATE KEY-----\n";
-        registry.add("JWT_PRIVATE_KEY", () -> pem);
-        registry.add("BCRYPT_STRENGTH", () -> "4");
+    static void privateKey(DynamicPropertyRegistry registry) {
+        InternalHttpTest.privateKey(registry);                   // the worker token that reads the code
     }
+
+    @Autowired
+    private com.fasterxml.jackson.databind.ObjectMapper json;
 
     @Test
     void register_then_retry_then_login() throws Exception {
@@ -47,15 +42,20 @@ class AuthHttpTest {
                 .andExpect(status().isCreated())
                 .andExpect(header().exists("Location"))
                 .andExpect(header().exists("X-Correlation-Id"))
-                .andExpect(jsonPath("$.user.role").value("CLIENT"))
-                .andExpect(jsonPath("$.user.barbershopId").isEmpty())
-                .andExpect(jsonPath("$.user.passwordHash").doesNotExist())
-                .andExpect(jsonPath("$.expiresIn").value(86400));
+                .andExpect(jsonPath("$.role").value("CLIENT"))
+                .andExpect(jsonPath("$.barbershopId").isEmpty())
+                .andExpect(jsonPath("$.passwordHash").doesNotExist())
+                .andExpect(jsonPath("$.emailVerified").value(false))
+                .andExpect(jsonPath("$.accessToken").doesNotExist());
 
         http.perform(post("/api/v1/auth/register").header("Idempotency-Key", "register-0001")
                         .contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andExpect(status().isOk());
 
+        http.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"MARIA@example.com\",\"password\":\"SecurePass123\"}"))
+                .andExpect(status().isForbidden());
+        Verification.confirm(http, json, "maria@example.com");
         http.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"MARIA@example.com\",\"password\":\"SecurePass123\"}"))
                 .andExpect(status().isOk())
