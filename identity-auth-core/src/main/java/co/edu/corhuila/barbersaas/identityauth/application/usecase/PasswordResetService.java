@@ -74,7 +74,12 @@ public class PasswordResetService implements PasswordResetUseCases {
         ResetCode match = resets.usable(user.id(), now).stream()
                 .filter(c -> code != null && hasher.matches(code, c.codeHash()))
                 .findFirst().orElseThrow(this::invalid);
-        if (!resets.consume(match.id(), user.withPasswordHash(hasher.hash(newPassword)), now)) {
+        // The code reached the inbox, so the address is proven too (ADR-018).
+        User updated = user.withPasswordHash(hasher.hash(newPassword));
+        if (!updated.emailVerified()) {
+            updated = updated.verifiedAt(now);
+        }
+        if (!resets.consume(match.id(), updated, now)) {
             throw invalid();
         }
     }
