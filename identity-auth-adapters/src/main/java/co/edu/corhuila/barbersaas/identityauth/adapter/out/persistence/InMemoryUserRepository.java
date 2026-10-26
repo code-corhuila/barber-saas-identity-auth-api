@@ -1,7 +1,10 @@
 package co.edu.corhuila.barbersaas.identityauth.adapter.out.persistence;
 
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.UserRepository;
+import co.edu.corhuila.barbersaas.identityauth.domain.model.Role;
 import co.edu.corhuila.barbersaas.identityauth.domain.model.User;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -21,6 +24,14 @@ public class InMemoryUserRepository implements UserRepository {
     @Override
     public Optional<User> findById(UUID id) {
         return Optional.ofNullable(users.get(id));
+    }
+
+    @Override
+    public List<User> findActiveOwners(UUID barbershopId) {
+        return users.values().stream()
+                .filter(u -> u.role() == Role.ADMIN_BARBERSHOP && u.active() && barbershopId.equals(u.barbershopId()))
+                .sorted(Comparator.comparing(User::createdAt))
+                .toList();
     }
 
     @Override
