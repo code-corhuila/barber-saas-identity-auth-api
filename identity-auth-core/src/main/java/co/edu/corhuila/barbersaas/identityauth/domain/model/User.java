@@ -22,9 +22,18 @@ public final class User {
     private final Role role;
     private final boolean active;
     private final Instant createdAt;
+    private final Instant emailVerifiedAt;
 
+    /** An account whose e-mail counts as verified since it was created (every account before ADR-018). */
     public User(UUID id, UUID barbershopId, String fullName, String email, String passwordHash, String phone,
                 String profilePhotoUrl, Role role, boolean active, Instant createdAt) {
+        this(id, barbershopId, fullName, email, passwordHash, phone, profilePhotoUrl, role, active, createdAt,
+                createdAt);
+    }
+
+    /** {@code emailVerifiedAt} is null until the e-mailed code is confirmed (ADR-018, DEC-AUTH-09). */
+    public User(UUID id, UUID barbershopId, String fullName, String email, String passwordHash, String phone,
+                String profilePhotoUrl, Role role, boolean active, Instant createdAt, Instant emailVerifiedAt) {
         this.id = Objects.requireNonNull(id);
         this.role = Objects.requireNonNull(role);
         if (role.requiresTenant() != (barbershopId != null)) {
@@ -41,12 +50,13 @@ public final class User {
         this.profilePhotoUrl = profilePhotoUrl;
         this.active = active;
         this.createdAt = Objects.requireNonNull(createdAt);
+        this.emailVerifiedAt = emailVerifiedAt;
     }
 
     /** Self-registration always creates a CLIENT without a barbershop (DEC-AUTH-01). */
     public static User newClient(UUID id, String fullName, String email, String passwordHash, String phone,
                                  Instant now) {
-        return new User(id, null, fullName, email, passwordHash, phone, null, Role.CLIENT, true, now);
+        return new User(id, null, fullName, email, passwordHash, phone, null, Role.CLIENT, true, now, null);
     }
 
     /**
@@ -56,19 +66,31 @@ public final class User {
     public static User newOwner(UUID id, UUID barbershopId, String fullName, String email, String passwordHash,
                                 String phone, Instant now) {
         return new User(id, barbershopId, fullName, email, passwordHash, phone, null, Role.ADMIN_BARBERSHOP, true,
-                now);
+                now, null);
     }
 
     /** A barber an owner adds to their own barbershop, with an initial password (DEC-AUTH-05). */
     public static User newBarber(UUID id, UUID barbershopId, String fullName, String email, String passwordHash,
                                  String phone, Instant now) {
-        return new User(id, barbershopId, fullName, email, passwordHash, phone, null, Role.BARBER, true, now);
+        return new User(id, barbershopId, fullName, email, passwordHash, phone, null, Role.BARBER, true, now, null);
     }
 
     /** The same account with a new password hash (password reset, HU-AUTH-002). */
     public User withPasswordHash(String newPasswordHash) {
         return new User(id, barbershopId, fullName, email, newPasswordHash, phone, profilePhotoUrl, role, active,
-                createdAt);
+                createdAt, emailVerifiedAt);
+    }
+
+    /** The same account with the name and phone the user edited (HU-AUTH-006); e-mail and role never change. */
+    public User withProfile(String newFullName, String newPhone) {
+        return new User(id, barbershopId, newFullName, email, passwordHash, newPhone, profilePhotoUrl, role, active,
+                createdAt, emailVerifiedAt);
+    }
+
+    /** The same account, verified at {@code at} (ADR-018). */
+    public User verifiedAt(Instant at) {
+        return new User(id, barbershopId, fullName, email, passwordHash, phone, profilePhotoUrl, role, active,
+                createdAt, Objects.requireNonNull(at));
     }
 
     /** E-mails are compared case-insensitively (uq_app_user_email is on lower(email)). */
@@ -101,4 +123,6 @@ public final class User {
     public Role role() { return role; }
     public boolean active() { return active; }
     public Instant createdAt() { return createdAt; }
+    public Instant emailVerifiedAt() { return emailVerifiedAt; }
+    public boolean emailVerified() { return emailVerifiedAt != null; }
 }

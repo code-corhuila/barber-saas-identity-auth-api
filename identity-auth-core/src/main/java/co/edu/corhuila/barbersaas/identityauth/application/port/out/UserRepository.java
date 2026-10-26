@@ -1,6 +1,7 @@
 package co.edu.corhuila.barbersaas.identityauth.application.port.out;
 
 import co.edu.corhuila.barbersaas.identityauth.domain.model.User;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -20,6 +21,9 @@ public interface UserRepository {
     List<User> findActiveOwners(UUID barbershopId);
 
     Optional<StoredKey> findKey(String key, String operation);
+
+    /** Name, phone and password hash of an existing user (HU-AUTH-006). */
+    void update(User user, Instant now);
 
     /** Writes the user and its idempotency key in ONE transaction. */
     void saveNew(User user, IdempotencyRecord key);
