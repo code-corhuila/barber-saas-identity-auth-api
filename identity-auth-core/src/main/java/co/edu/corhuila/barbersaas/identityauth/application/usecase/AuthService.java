@@ -19,6 +19,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.BiFunction;
@@ -145,6 +146,11 @@ public class AuthService implements AuthUseCases {
     @Override
     public User findUser(UUID id) {
         return users.findById(id).orElseThrow(UserNotFound::new);
+    }
+
+    @Override
+    public List<User> findOwners(UUID barbershopId) {
+        return users.findActiveOwners(barbershopId);
     }
 
     private AuthResult authenticate(User user, boolean created) {
