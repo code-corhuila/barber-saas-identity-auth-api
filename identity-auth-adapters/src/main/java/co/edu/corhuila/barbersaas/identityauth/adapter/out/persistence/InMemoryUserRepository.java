@@ -48,6 +48,11 @@ public class InMemoryUserRepository implements UserRepository {
         keys.put(key.operation() + " " + key.key(), new StoredKey(user.id(), key.requestHash()));
     }
 
+    @Override
+    public void update(User user, java.time.Instant now) {
+        replace(user);
+    }
+
     /** A new password of an existing user (InMemoryPasswordResets). */
     void replace(User user) {
         users.put(user.id(), user);

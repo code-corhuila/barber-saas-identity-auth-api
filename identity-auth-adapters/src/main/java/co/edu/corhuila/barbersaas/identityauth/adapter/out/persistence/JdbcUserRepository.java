@@ -6,6 +6,7 @@ import co.edu.corhuila.barbersaas.identityauth.domain.model.User;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -17,7 +18,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class JdbcUserRepository implements UserRepository {
 
     private static final String COLUMNS = "id, barbershop_id, full_name, email, password_hash, phone, "
-            + "profile_photo_url, role, is_active, created_at";
+            + "profile_photo_url, role, is_active, created_at, email_verified_at";
 
     private final JdbcTemplate jdbc;
     private final TransactionTemplate tx;
@@ -58,11 +59,12 @@ public class JdbcUserRepository implements UserRepository {
         try {
             tx.executeWithoutResult(status -> {
                 jdbc.update("INSERT INTO identity_auth.app_user (id, barbershop_id, full_name, email, password_hash, "
-                                + "phone, profile_photo_url, role, is_active, created_at, updated_at) "
-                                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                + "phone, profile_photo_url, role, is_active, created_at, updated_at, email_verified_at) "
+                                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         u.id(), u.barbershopId(), u.fullName(), u.email(), u.passwordHash(), u.phone(),
                         u.profilePhotoUrl(), u.role().name(), u.active(),
-                        Timestamp.from(u.createdAt()), Timestamp.from(u.createdAt()));
+                        Timestamp.from(u.createdAt()), Timestamp.from(u.createdAt()),
+                        u.emailVerifiedAt() == null ? null : Timestamp.from(u.emailVerifiedAt()));
                 jdbc.update("INSERT INTO identity_auth.idempotency_key (key, operation, resource_id, request_hash) "
                         + "VALUES (?, ?, ?, ?)", key.key(), key.operation(), u.id(), key.requestHash());
             });
@@ -71,10 +73,18 @@ public class JdbcUserRepository implements UserRepository {
         }
     }
 
+    @Override
+    public void update(User u, Instant now) {
+        jdbc.update("UPDATE identity_auth.app_user SET full_name = ?, phone = ?, password_hash = ?, updated_at = ? "
+                + "WHERE id = ?", u.fullName(), u.phone(), u.passwordHash(), Timestamp.from(now), u.id());
+    }
+
     private static User map(ResultSet rs) throws SQLException {
+        Timestamp verified = rs.getTimestamp("email_verified_at");
         return new User(rs.getObject("id", UUID.class), rs.getObject("barbershop_id", UUID.class),
                 rs.getString("full_name"), rs.getString("email"), rs.getString("password_hash"),
                 rs.getString("phone"), rs.getString("profile_photo_url"), Role.valueOf(rs.getString("role")),
-                rs.getBoolean("is_active"), rs.getTimestamp("created_at").toInstant());
+                rs.getBoolean("is_active"), rs.getTimestamp("created_at").toInstant(),
+                verified == null ? null : verified.toInstant());
     }
 }
