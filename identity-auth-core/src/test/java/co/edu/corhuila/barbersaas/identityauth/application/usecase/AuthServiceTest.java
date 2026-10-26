@@ -316,6 +316,10 @@ class AuthServiceTest {
             return byId.values().stream().filter(u -> u.email().equals(email)).findFirst();
         }
 
+        public java.util.List<User> findActiveOwners(UUID barbershopId) {
+            return java.util.List.of();
+        }
+
         public Optional<User> findById(UUID id) {
             return Optional.ofNullable(byId.get(id));
         }

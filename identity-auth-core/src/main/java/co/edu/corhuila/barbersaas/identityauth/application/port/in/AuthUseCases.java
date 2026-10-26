@@ -1,6 +1,7 @@
 package co.edu.corhuila.barbersaas.identityauth.application.port.in;
 
 import co.edu.corhuila.barbersaas.identityauth.domain.model.User;
+import java.util.List;
 import java.util.UUID;
 
 /** What identity-auth offers (auth-service.yaml). */
@@ -36,6 +37,9 @@ public interface AuthUseCases {
 
     /** Another service checks a user and copies its display data (DEC-AUTH-07, ADR-014). */
     User findUser(UUID id);
+
+    /** The owners platform-admin warns about the plan of their barbershop (DEC-AUTH-10). */
+    List<User> findOwners(UUID barbershopId);
 
     /** No user with that id: 404. */
     class UserNotFound extends RuntimeException {
