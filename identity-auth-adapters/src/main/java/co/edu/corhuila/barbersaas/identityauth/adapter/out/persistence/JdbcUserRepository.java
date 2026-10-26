@@ -6,6 +6,7 @@ import co.edu.corhuila.barbersaas.identityauth.domain.model.User;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.DuplicateKeyException;
@@ -36,6 +37,12 @@ public class JdbcUserRepository implements UserRepository {
     public Optional<User> findById(UUID id) {
         return jdbc.query("SELECT " + COLUMNS + " FROM identity_auth.app_user WHERE id = ?",
                 (rs, n) -> map(rs), id).stream().findFirst();
+    }
+
+    @Override
+    public List<User> findActiveOwners(UUID barbershopId) {
+        return jdbc.query("SELECT " + COLUMNS + " FROM identity_auth.app_user WHERE barbershop_id = ? "
+                + "AND role = 'ADMIN_BARBERSHOP' AND is_active ORDER BY created_at", (rs, n) -> map(rs), barbershopId);
     }
 
     @Override

@@ -1,6 +1,7 @@
 package co.edu.corhuila.barbersaas.identityauth.application.port.out;
 
 import co.edu.corhuila.barbersaas.identityauth.domain.model.User;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -14,6 +15,9 @@ public interface UserRepository {
     Optional<User> findByEmail(String normalizedEmail);
 
     Optional<User> findById(UUID id);
+
+    /** The active ADMIN_BARBERSHOP accounts of one barbershop, oldest first (DEC-AUTH-10). */
+    List<User> findActiveOwners(UUID barbershopId);
 
     Optional<StoredKey> findKey(String key, String operation);
 
