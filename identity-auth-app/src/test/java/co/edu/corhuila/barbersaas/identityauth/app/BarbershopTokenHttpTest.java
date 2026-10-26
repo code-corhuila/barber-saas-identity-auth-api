@@ -128,7 +128,7 @@ class BarbershopTokenHttpTest {
                         .content("{\"fullName\":\"Cliente\",\"email\":\"" + email + "\",\"password\":\"Client123\"}"))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
-        return json.readTree(body).get("accessToken").asText();
+        return Verification.confirm(http, json, email).get("accessToken").asText();
     }
 
     private static RequestBuilder barbershopToken(String token, UUID barbershopId) {
