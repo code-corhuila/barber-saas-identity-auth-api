@@ -36,11 +36,17 @@ no Spring), `identity-auth-adapters` (HTTP, JDBC, BCrypt, RS256) and `identity-a
 
 | Operation | Contract |
 |---|---|
-| `POST /api/v1/auth/register` | `Idempotency-Key` required; 201, or 200 on a retry; 422 if the e-mail exists |
-| `POST /api/v1/auth/login` | 200 with tokens; 401 with the same message for any wrong credential |
+| `POST /api/v1/auth/register` | `Idempotency-Key` required; 201 with the account and no tokens, or 200 on a retry; 422 if the e-mail exists. The account is unverified and a 6-digit code goes to its e-mail through `EmailVerificationRequested` (`DEC-AUTH-09`, ADR-018) |
+| `POST /api/v1/auth/login` | 200 with tokens; 401 with the same message for any wrong credential; 403 when the password is right but the e-mail is not verified |
+| `POST /api/v1/auth/email-verification/confirm` | 200 with the same tokens as login: verifies the account; 422 with one message for a wrong, expired or used code |
+| `POST /api/v1/auth/email-verification/resend` | Always 202; a new code for an unverified account, at most one per minute and five per hour |
+| `POST /api/v1/auth/refresh` | 200 with new tokens; the refresh token is single use (401 when used, revoked or expired) |
+| `POST /api/v1/auth/logout` | Token required; 204, revokes the given refresh token, or every one with `allDevices: true` |
+| `GET`/`PATCH /api/v1/auth/me` | Token required; the account of the token; `PATCH` changes only `fullName` and `phone` |
+| `POST /api/v1/auth/me/password` | Token required; 204 with the right current password, closing every other session; 422 otherwise |
 | `GET /api/v1/auth/jwks` | RFC 7517 key set |
 | `POST /api/v1/auth/password-reset` | Always 202 (`DEC-AUTH-03`); for an active account it stores a 6-digit code as a hash (15 minutes, the earlier codes stop working) and writes `PasswordResetRequested` to the outbox in the same transaction (`DEC-AUTH-08`) |
-| `POST /api/v1/auth/password-reset/confirm` | 204: marks the code used, sets the new password and revokes every refresh token of the user; 422 with one message for a wrong, expired or used code |
+| `POST /api/v1/auth/password-reset/confirm` | 204: marks the code used, sets the new password, marks the e-mail verified (the code reached it) and revokes every refresh token of the user; 422 with one message for a wrong, expired or used code |
 | `POST /api/v1/auth/barbers` | Role `ADMIN_BARBERSHOP`; creates a `BARBER` in the barbershop of the owner's token (never from the body) with an initial password; 201, or 200 on a retry; 403 for any other role; 422 if the e-mail exists |
 | `POST /api/v1/auth/barbershop-token` | Role `CLIENT`; body `{barbershopId}`; checks the barbershop is `ACTIVE` or `TRIAL` with barbershop-api (`BARBERSHOP_API_URL`) and returns a one-hour `CLIENT` token with that `barbershopId`, no refresh token, nothing stored (`DEC-AUTH-06`); 403 for any other role; 404 if closed or unknown; 503 if barbershop-api does not answer |
 | `POST /internal/v1/owners` | Only the workflow's service token (`sub: barber-saas-workflow`), never routed by the gateway; creates the `ADMIN_BARBERSHOP` of a barbershop the onboarding saga just created; 201, or 200 on a retry; 403 for any other token; 422 if the e-mail exists |
@@ -74,5 +80,5 @@ against the verifier, and the HTTP contract with the in-memory repository.
 
 ### What is missing
 
-`refresh` and `logout` from `auth-service.yaml`; the login lock of DEC-AUTH-02;
+The login lock of DEC-AUTH-02;
 publishing `UserRegistered` through the outbox.
