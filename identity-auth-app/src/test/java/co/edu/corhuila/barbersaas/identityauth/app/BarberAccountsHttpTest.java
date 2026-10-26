@@ -44,6 +44,7 @@ class BarberAccountsHttpTest {
 
         http.perform(createBarber(owner, "barber-key-0001", barber("juan@example.com")))
                 .andExpect(status().isOk());
+        Verification.confirm(http, json, "juan@example.com");     // the code goes to the barber's own e-mail
 
         String login = http.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"juan@example.com\",\"password\":\"Inicial2026\"}"))

@@ -138,8 +138,8 @@ class PasswordResetHttpTest {
 
     private JsonNode pendingEvent(String worker, String email) throws Exception {
         for (JsonNode e : pending(worker)) {
-            if (email.equals(e.get("payload").get("email").asText())) {
-                assertEquals("PasswordResetRequested", e.get("type").asText());
+            if (email.equals(e.get("payload").get("email").asText())
+                    && "PasswordResetRequested".equals(e.get("type").asText())) {
                 assertTrue(e.get("payload").get("code").asText().matches("\\d{6}"));
                 return e;
             }
