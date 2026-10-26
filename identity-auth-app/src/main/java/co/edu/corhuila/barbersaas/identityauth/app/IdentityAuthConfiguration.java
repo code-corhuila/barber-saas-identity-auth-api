@@ -16,6 +16,7 @@ import co.edu.corhuila.barbersaas.identityauth.adapter.out.security.Rs256TokenIs
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.OutboxRelayUseCases;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.PasswordResetUseCases;
+import co.edu.corhuila.barbersaas.identityauth.application.port.out.EmailVerifications;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.OutboxStore;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.PasswordResets;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.UserRepository;
@@ -87,11 +88,12 @@ public class IdentityAuthConfiguration {
 
     @Bean
     AuthUseCases authUseCases(UserRepository users, Rs256TokenIssuer issuer, Database database,
+                              PasswordResets codeStore,
                               @Value("${BCRYPT_STRENGTH:10}") int strength,
                               @Value("${BARBERSHOP_API_URL:}") String barbershopApiUrl) {
         return new AuthService(users, new BCryptPasswordHasher(strength), issuer,
                 new OpaqueRefreshTokens(database.jdbc()), new HttpBarbershops(barbershopApiUrl), new UuidGenerator(),
-                Clock.systemUTC());
+                Clock.systemUTC(), (EmailVerifications) codeStore, new RandomResetCodes());
     }
 
     /**
