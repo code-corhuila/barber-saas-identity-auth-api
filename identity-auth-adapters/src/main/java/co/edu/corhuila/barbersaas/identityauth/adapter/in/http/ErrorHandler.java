@@ -5,6 +5,7 @@ import co.edu.corhuila.barbersaas.identityauth.adapter.in.http.ApiError.Validati
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.BarbershopNotFound;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.IdempotencyKeyReused;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.InvalidCredentials;
+import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.EmailNotVerified;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.UserNotFound;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.OutboxRelayUseCases.OutboxEventNotFound;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.Barbershops;
@@ -39,6 +40,11 @@ public class ErrorHandler {
     @ExceptionHandler(InvalidCredentials.class)
     ResponseEntity<ApiError> invalidCredentials(InvalidCredentials e) {
         return respond(HttpStatus.UNAUTHORIZED, ApiError.of(ApiError.UNAUTHORIZED, e.getMessage()));
+    }
+
+    @ExceptionHandler(EmailNotVerified.class)
+    ResponseEntity<ApiError> emailNotVerified(EmailNotVerified e) {
+        return respond(HttpStatus.FORBIDDEN, ApiError.of(ApiError.FORBIDDEN, e.getMessage()));
     }
 
     @ExceptionHandler(ForbiddenException.class)
