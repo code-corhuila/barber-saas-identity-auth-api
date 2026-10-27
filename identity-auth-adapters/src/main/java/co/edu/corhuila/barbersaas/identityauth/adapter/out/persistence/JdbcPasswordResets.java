@@ -78,6 +78,19 @@ public class JdbcPasswordResets implements PasswordResets, EmailVerifications, O
     }
 
     @Override
+    public void recordVerificationFailure(UUID userId, Instant now, int maxAttempts) {
+        recordFailure("email_verification_code", userId, now, maxAttempts);
+    }
+
+    /** One statement, so parallel wrong guesses each count; reaching the limit retires the code (used_at). */
+    private void recordFailure(String table, UUID userId, Instant now, int maxAttempts) {
+        Timestamp at = Timestamp.from(now);
+        jdbc.update("UPDATE identity_auth." + table + " SET failed_attempts = failed_attempts + 1, "
+                + "used_at = CASE WHEN failed_attempts + 1 >= ? THEN ? ELSE used_at END "
+                + "WHERE user_id = ? AND used_at IS NULL AND expires_at > ?", maxAttempts, at, userId, at);
+    }
+
+    @Override
     public boolean consumeVerification(UUID codeId, UUID userId, Instant now) {
         Boolean consumed = tx.execute(status -> {
             Timestamp at = Timestamp.from(now);
@@ -109,6 +122,18 @@ public class JdbcPasswordResets implements PasswordResets, EmailVerifications, O
                         rs.getString("code_hash"), rs.getTimestamp("expires_at").toInstant(),
                         rs.getTimestamp("created_at").toInstant()),
                 userId, Timestamp.from(now));
+    }
+
+    @Override
+    public int requestsSince(UUID userId, Instant since) {
+        Integer count = jdbc.queryForObject("SELECT count(*) FROM identity_auth.password_reset_token "
+                + "WHERE user_id = ? AND created_at >= ?", Integer.class, userId, Timestamp.from(since));
+        return count == null ? 0 : count;
+    }
+
+    @Override
+    public void recordFailure(UUID userId, Instant now, int maxAttempts) {
+        recordFailure("password_reset_token", userId, now, maxAttempts);
     }
 
     @Override
