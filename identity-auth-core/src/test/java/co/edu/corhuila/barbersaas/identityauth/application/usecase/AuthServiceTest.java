@@ -139,6 +139,19 @@ class AuthServiceTest {
     }
 
     @Test
+    void five_wrong_codes_retire_the_code_even_for_the_right_one() {
+        service.register(command("maria@example.com"), "key-00000001");
+        for (int i = 0; i < 4; i++) {
+            assertThrows(BusinessRuleViolation.class, () -> service.confirmEmail("maria@example.com", "000000"));
+        }
+        assertEquals(1, verifications.codes.stream().filter(c -> !verifications.used.contains(c.id())).count());
+
+        assertThrows(BusinessRuleViolation.class, () -> service.confirmEmail("maria@example.com", "000000"));
+        assertThrows(BusinessRuleViolation.class, () -> service.confirmEmail("maria@example.com", "123456"));
+        assertThrows(EmailNotVerified.class, () -> service.login("maria@example.com", "SecurePass123"));
+    }
+
+    @Test
     void resend_waits_a_minute_and_stops_after_five_an_hour() {
         service.register(command("maria@example.com"), "key-00000001");
 
@@ -473,6 +486,7 @@ class AuthServiceTest {
         final List<VerificationCode> codes = new ArrayList<>();
         final List<OutboxEvent> events = new ArrayList<>();
         final Set<UUID> used = new HashSet<>();
+        final Map<UUID, Integer> failed = new HashMap<>();
         final FakeUsers users;
 
         FakeVerifications(FakeUsers users) {
@@ -492,6 +506,14 @@ class AuthServiceTest {
 
         public int verificationsSince(UUID userId, Instant since) {
             return (int) codes.stream().filter(c -> c.userId().equals(userId) && !c.createdAt().isBefore(since)).count();
+        }
+
+        public void recordVerificationFailure(UUID userId, Instant at, int maxAttempts) {
+            usableVerifications(userId, at).forEach(c -> {
+                if (failed.merge(c.id(), 1, Integer::sum) >= maxAttempts) {
+                    used.add(c.id());
+                }
+            });
         }
 
         public boolean consumeVerification(UUID codeId, UUID userId, Instant at) {
