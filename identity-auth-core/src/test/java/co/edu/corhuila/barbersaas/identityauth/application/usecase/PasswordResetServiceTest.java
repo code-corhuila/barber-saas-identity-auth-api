@@ -103,13 +103,53 @@ class PasswordResetServiceTest {
                 () -> service.confirm("maria@example.com", "000000", "NewPass123"));
         assertEquals("The code is invalid or has expired", wrong.getMessage());
 
+        clock.now = T0.plusSeconds(61);
         service.request("maria@example.com");                 // the first code stops working
         assertThrows(BusinessRuleViolation.class, () -> service.confirm("maria@example.com", "123456", "NewPass123"));
 
-        clock.now = T0.plusSeconds(901);
+        clock.now = T0.plusSeconds(61 + 901);
         assertThrows(BusinessRuleViolation.class, () -> service.confirm("maria@example.com", "654321", "NewPass123"));
         assertThrows(BusinessRuleViolation.class, () -> service.confirm("nobody@example.com", "654321", "NewPass123"));
         assertEquals("hashed:OldPass123", users.get(maria.id()).passwordHash());
+    }
+
+    @Test
+    void five_wrong_codes_retire_the_code_even_for_the_right_one() {
+        service.request("maria@example.com");
+        for (int i = 0; i < 5; i++) {
+            assertThrows(BusinessRuleViolation.class, () -> service.confirm("maria@example.com", "000000", "NewPass123"));
+        }
+
+        BusinessRuleViolation e = assertThrows(BusinessRuleViolation.class,
+                () -> service.confirm("maria@example.com", "123456", "NewPass123"));
+        assertEquals("The code is invalid or has expired", e.getMessage());
+        assertEquals("hashed:OldPass123", users.get(maria.id()).passwordHash());
+    }
+
+    @Test
+    void four_wrong_codes_still_let_the_right_one_in() {
+        service.request("maria@example.com");
+        for (int i = 0; i < 4; i++) {
+            assertThrows(BusinessRuleViolation.class, () -> service.confirm("maria@example.com", "000000", "NewPass123"));
+        }
+
+        service.confirm("maria@example.com", "123456", "NewPass123");
+        assertEquals("hashed:NewPass123", users.get(maria.id()).passwordHash());
+    }
+
+    @Test
+    void a_new_code_is_sent_at_most_once_a_minute_and_five_times_an_hour() {
+        nextCodes.addAll(List.of("222222", "333333", "444444", "555555"));
+        service.request("maria@example.com");
+        service.request("maria@example.com");               // same minute: ignored, still 202
+        assertEquals(1, resets.codes.size());
+
+        for (int minute = 1; minute <= 5; minute++) {
+            clock.now = T0.plusSeconds(61L * minute);
+            service.request("maria@example.com");
+        }
+        assertEquals(5, resets.codes.size());               // the sixth in the hour is ignored
+        assertEquals(5, resets.events.size());
     }
 
     @Test
@@ -150,6 +190,7 @@ class PasswordResetServiceTest {
         final List<ResetCode> codes = new ArrayList<>();
         final List<OutboxEvent> events = new ArrayList<>();
         final Set<UUID> used = new HashSet<>();
+        final Map<UUID, Integer> failed = new HashMap<>();
 
         public void saveRequest(ResetCode code, OutboxEvent event) {
             codes.stream().filter(c -> c.userId().equals(code.userId())).forEach(c -> used.add(c.id()));
@@ -161,6 +202,18 @@ class PasswordResetServiceTest {
             return codes.stream()
                     .filter(c -> c.userId().equals(userId) && !used.contains(c.id()) && c.expiresAt().isAfter(now))
                     .sorted(Comparator.comparing(ResetCode::createdAt).reversed()).toList();
+        }
+
+        public int requestsSince(UUID userId, Instant since) {
+            return (int) codes.stream().filter(c -> c.userId().equals(userId) && !c.createdAt().isBefore(since)).count();
+        }
+
+        public void recordFailure(UUID userId, Instant now, int maxAttempts) {
+            usable(userId, now).forEach(c -> {
+                if (failed.merge(c.id(), 1, Integer::sum) >= maxAttempts) {
+                    used.add(c.id());
+                }
+            });
         }
 
         public boolean consume(UUID codeId, User user, Instant now) {
