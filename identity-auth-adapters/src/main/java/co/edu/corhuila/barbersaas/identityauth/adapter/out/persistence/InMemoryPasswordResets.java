@@ -21,6 +21,7 @@ public class InMemoryPasswordResets implements PasswordResets, EmailVerification
     private final InMemoryUserRepository users;
     private final List<ResetCode> codes = new ArrayList<>();
     private final Map<UUID, Instant> usedAt = new LinkedHashMap<>();
+    private final Map<UUID, Integer> failedAttempts = new LinkedHashMap<>();
     private final Map<UUID, Row> outbox = new LinkedHashMap<>();
     private final List<VerificationCode> verifications = new ArrayList<>();
 
@@ -41,6 +42,27 @@ public class InMemoryPasswordResets implements PasswordResets, EmailVerification
         return codes.stream()
                 .filter(c -> c.userId().equals(userId) && !usedAt.containsKey(c.id()) && c.expiresAt().isAfter(now))
                 .sorted(Comparator.comparing(ResetCode::createdAt).reversed()).toList();
+    }
+
+    @Override
+    public synchronized int requestsSince(UUID userId, Instant since) {
+        return (int) codes.stream().filter(c -> c.userId().equals(userId) && !c.createdAt().isBefore(since)).count();
+    }
+
+    @Override
+    public synchronized void recordFailure(UUID userId, Instant now, int maxAttempts) {
+        usable(userId, now).forEach(c -> fail(c.id(), now, maxAttempts));
+    }
+
+    @Override
+    public synchronized void recordVerificationFailure(UUID userId, Instant now, int maxAttempts) {
+        usableVerifications(userId, now).forEach(c -> fail(c.id(), now, maxAttempts));
+    }
+
+    private void fail(UUID codeId, Instant now, int maxAttempts) {
+        if (failedAttempts.merge(codeId, 1, Integer::sum) >= maxAttempts) {
+            usedAt.putIfAbsent(codeId, now);
+        }
     }
 
     @Override
