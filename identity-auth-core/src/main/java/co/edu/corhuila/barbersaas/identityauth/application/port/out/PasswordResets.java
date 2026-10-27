@@ -19,6 +19,15 @@ public interface PasswordResets {
     /** Codes of the user not used and not expired at {@code now}, newest first. */
     List<ResetCode> usable(UUID userId, Instant now);
 
+    /** How many codes the user was sent since {@code since}: the request limits. */
+    int requestsSince(UUID userId, Instant since);
+
+    /**
+     * A wrong code was tried (SEC-03): one more failed attempt on each usable code of the user; a code
+     * that reaches {@code maxAttempts} stops working, even for the right code.
+     */
+    void recordFailure(UUID userId, Instant now, int maxAttempts);
+
     /**
      * In ONE transaction: marks the code used, stores the new password hash of {@code user} (and its
      * verified e-mail, ADR-018) and revokes every refresh token of the user. False when the code was used meanwhile (single use).

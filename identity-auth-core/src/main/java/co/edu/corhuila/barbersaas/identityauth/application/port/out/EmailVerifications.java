@@ -21,6 +21,12 @@ public interface EmailVerifications {
     /** How many codes the user was sent since {@code since}: the resend limits. */
     int verificationsSince(UUID userId, Instant since);
 
+    /**
+     * A wrong code was tried (SEC-03): one more failed attempt on each usable code of the user; a code
+     * that reaches {@code maxAttempts} stops working, even for the right code.
+     */
+    void recordVerificationFailure(UUID userId, Instant now, int maxAttempts);
+
     /** In ONE transaction: marks the code used and the user verified. False when it was used meanwhile. */
     boolean consumeVerification(UUID codeId, UUID userId, Instant now);
 }
