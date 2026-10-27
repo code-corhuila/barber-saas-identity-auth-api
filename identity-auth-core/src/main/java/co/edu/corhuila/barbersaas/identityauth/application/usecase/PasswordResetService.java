@@ -26,6 +26,10 @@ public class PasswordResetService implements PasswordResetUseCases {
 
     static final Duration LIFETIME = Duration.ofMinutes(15);
     static final String EVENT = "PasswordResetRequested";
+    /** SEC-03: wrong attempts a code survives, and how often a new code can be asked for. */
+    static final int ATTEMPTS = 5;
+    static final Duration REQUEST_GAP = Duration.ofMinutes(1);
+    static final int REQUESTS_PER_HOUR = 5;
 
     private final UserRepository users;
     private final PasswordResets resets;
@@ -55,6 +59,10 @@ public class PasswordResetService implements PasswordResetUseCases {
         }
         User user = found.get();
         Instant now = clock.instant();
+        if (resets.requestsSince(user.id(), now.minus(REQUEST_GAP)) > 0
+                || resets.requestsSince(user.id(), now.minus(Duration.ofHours(1))) >= REQUESTS_PER_HOUR) {
+            return;                                  // 202 either way: says nothing about the account
+        }
         Instant expiresAt = now.plus(LIFETIME);
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("userId", user.id().toString());
@@ -71,9 +79,14 @@ public class PasswordResetService implements PasswordResetUseCases {
         PasswordPolicy.check(newPassword);
         Instant now = clock.instant();
         User user = normalized(email).flatMap(users::findByEmail).filter(User::active).orElseThrow(this::invalid);
-        ResetCode match = resets.usable(user.id(), now).stream()
+        Optional<ResetCode> found = resets.usable(user.id(), now).stream()
                 .filter(c -> code != null && hasher.matches(code, c.codeHash()))
-                .findFirst().orElseThrow(this::invalid);
+                .findFirst();
+        if (found.isEmpty()) {
+            resets.recordFailure(user.id(), now, ATTEMPTS);
+            throw invalid();
+        }
+        ResetCode match = found.get();
         // The code reached the inbox, so the address is proven too (ADR-018).
         User updated = user.withPasswordHash(hasher.hash(newPassword));
         if (!updated.emailVerified()) {

@@ -42,6 +42,8 @@ public class AuthService implements AuthUseCases {
     static final Duration VERIFICATION_LIFETIME = Duration.ofMinutes(15);
     static final Duration RESEND_GAP = Duration.ofMinutes(1);
     static final int RESENDS_PER_HOUR = 5;
+    /** SEC-03: after five wrong attempts the code stops working and a new one must be asked for. */
+    static final int VERIFICATION_ATTEMPTS = 5;
     static final String VERIFICATION_EVENT = "EmailVerificationRequested";
 
     private final UserRepository users;
@@ -168,9 +170,14 @@ public class AuthService implements AuthUseCases {
         Instant now = clock.instant();
         User user = normalized(email).flatMap(users::findByEmail).filter(User::active)
                 .orElseThrow(AuthService::invalidCode);
-        VerificationCode match = verifications.usableVerifications(user.id(), now).stream()
+        Optional<VerificationCode> found = verifications.usableVerifications(user.id(), now).stream()
                 .filter(c -> code != null && hasher.matches(code, c.codeHash()))
-                .findFirst().orElseThrow(AuthService::invalidCode);
+                .findFirst();
+        if (found.isEmpty()) {
+            verifications.recordVerificationFailure(user.id(), now, VERIFICATION_ATTEMPTS);
+            throw invalidCode();
+        }
+        VerificationCode match = found.get();
         if (!verifications.consumeVerification(match.id(), user.id(), now)) {
             throw invalidCode();
         }
