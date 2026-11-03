@@ -9,6 +9,7 @@ import co.edu.corhuila.barbersaas.identityauth.application.port.out.OutboxEvent;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.PasswordHasher;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.RefreshTokens;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.ResetCodes;
+import co.edu.corhuila.barbersaas.identityauth.application.port.out.SignInFailures;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.TokenIssuer;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.UserRepository;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.UserRepository.IdempotencyRecord;
@@ -35,8 +36,14 @@ public class AuthService implements AuthUseCases {
     static final String REGISTER_OPERATION = "POST /api/v1/auth/register";
     static final String CREATE_OWNER_OPERATION = "POST /internal/v1/owners";
     static final String CREATE_BARBER_OPERATION = "POST /api/v1/auth/barbers";
-    /** Short because a stateless token cannot be revoked and a barbershop can be suspended (DEC-AUTH-06). */
-    static final Duration BARBERSHOP_TOKEN_LIFETIME = Duration.ofHours(1);
+    /**
+     * Short because a stateless token cannot be revoked and a barbershop can be suspended (DEC-AUTH-06);
+     * no longer than the sign-in token it comes from (docs#156).
+     */
+    static final Duration BARBERSHOP_TOKEN_LIFETIME = Duration.ofMinutes(15);
+    /** docs#155: ten failed sign-ins of one e-mail in 15 minutes lock it, even for the right password. */
+    static final int SIGN_IN_FAILURES = 10;
+    static final Duration SIGN_IN_WINDOW = Duration.ofMinutes(15);
     private static final char SEPARATOR = 0;
     /** ADR-018: the code lives 15 minutes; at most one per minute and five per hour per account. */
     static final Duration VERIFICATION_LIFETIME = Duration.ofMinutes(15);
@@ -55,10 +62,11 @@ public class AuthService implements AuthUseCases {
     private final Clock clock;
     private final EmailVerifications verifications;
     private final ResetCodes codes;
+    private final SignInFailures failures;
 
     public AuthService(UserRepository users, PasswordHasher hasher, TokenIssuer tokens,
                        RefreshTokens refreshTokens, Barbershops barbershops, IdGenerator ids, Clock clock,
-                       EmailVerifications verifications, ResetCodes codes) {
+                       EmailVerifications verifications, ResetCodes codes, SignInFailures failures) {
         this.users = users;
         this.hasher = hasher;
         this.tokens = tokens;
@@ -68,13 +76,14 @@ public class AuthService implements AuthUseCases {
         this.clock = clock;
         this.verifications = verifications;
         this.codes = codes;
+        this.failures = failures;
     }
 
     @Override
     public Created register(RegisterCommand command, String idempotencyKey) {
         return createOnce(idempotencyKey, REGISTER_OPERATION,
                 requestHash(command.fullName(), command.email(), command.password(), command.phone()),
-                command.password(), command.email(),
+                command.password(), command.email(), false,
                 (email, hash) -> User.newClient(ids.next(), command.fullName(), email, hash, command.phone(),
                         clock.instant()));
     }
@@ -84,7 +93,7 @@ public class AuthService implements AuthUseCases {
         return createOnce(idempotencyKey, CREATE_OWNER_OPERATION,
                 requestHash(command.fullName(), command.email(), command.password(), command.phone(),
                         String.valueOf(command.barbershopId())),
-                command.password(), command.email(),
+                command.password(), command.email(), true,
                 (email, hash) -> User.newOwner(ids.next(), command.barbershopId(), command.fullName(), email, hash,
                         command.phone(), clock.instant()));
     }
@@ -94,17 +103,19 @@ public class AuthService implements AuthUseCases {
         return createOnce(idempotencyKey, CREATE_BARBER_OPERATION,
                 requestHash(command.fullName(), command.email(), command.password(), command.phone(),
                         String.valueOf(ownerBarbershopId)),
-                command.password(), command.email(),
+                command.password(), command.email(), true,
                 (email, hash) -> User.newBarber(ids.next(), ownerBarbershopId, command.fullName(), email, hash,
                         command.phone(), clock.instant()));
     }
 
     /**
      * Creates an account once per Idempotency-Key: a retry with the same key and body returns the
-     * first account and creates nothing; the same key with another body is refused.
+     * first account and creates nothing; the same key with another body is refused. A taken e-mail is
+     * a 422 only where the caller is trusted ({@code revealTaken}); the public sign-up answers it like a
+     * new account and stores nothing (docs#167).
      */
     private Created createOnce(String idempotencyKey, String operation, String requestHash, String password,
-                               String rawEmail, BiFunction<String, String, User> build) {
+                               String rawEmail, boolean revealTaken, BiFunction<String, String, User> build) {
         Optional<UserRepository.StoredKey> stored = users.findKey(idempotencyKey, operation);
         if (stored.isPresent()) {
             if (!stored.get().requestHash().equals(requestHash)) {
@@ -115,18 +126,27 @@ public class AuthService implements AuthUseCases {
 
         PasswordPolicy.check(password);
         String email = User.normalizeEmail(rawEmail);
-        if (users.findByEmail(email).isPresent()) {
-            throw new BusinessRuleViolation("The email is already registered");
+        boolean taken = users.findByEmail(email).isPresent();
+        User user = build.apply(email, hasher.hash(password));   // hashed either way: the time is the same
+        if (taken) {
+            return alreadyTaken(user, revealTaken, "The email is already registered");
         }
-        User user = build.apply(email, hasher.hash(password));
         try {
             users.saveNew(user, new IdempotencyRecord(idempotencyKey, operation, requestHash));
         } catch (UserRepository.EmailAlreadyTaken e) {
-            throw new BusinessRuleViolation(e.getMessage());
+            return alreadyTaken(user, revealTaken, e.getMessage());
         }
         // A second transaction: if it fails the account exists without a code, and "resend" sends one.
         sendVerification(user);
         return new Created(user, true);
+    }
+
+    /** The unsaved account looks like a new one: same status, same body, no code is sent (docs#167). */
+    private static Created alreadyTaken(User unsaved, boolean revealTaken, String message) {
+        if (revealTaken) {
+            throw new BusinessRuleViolation(message);
+        }
+        return new Created(unsaved, true);
     }
 
     @Override
@@ -137,10 +157,19 @@ public class AuthService implements AuthUseCases {
         } catch (BusinessRuleViolation e) {
             throw new InvalidCredentials();
         }
-        User user = users.findByEmail(normalized)
+        Instant now = clock.instant();
+        if (failures.countSince(normalized, now.minus(SIGN_IN_WINDOW)) >= SIGN_IN_FAILURES) {
+            throw new SignInLocked();
+        }
+        Optional<User> found = users.findByEmail(normalized)
                 .filter(User::active)
-                .filter(u -> password != null && hasher.matches(password, u.passwordHash()))
-                .orElseThrow(InvalidCredentials::new);
+                .filter(u -> password != null && hasher.matches(password, u.passwordHash()));
+        if (found.isEmpty()) {
+            failures.record(normalized, now);
+            throw new InvalidCredentials();
+        }
+        User user = found.get();
+        failures.clear(normalized);
         if (!user.emailVerified()) {
             throw new EmailNotVerified();          // only after the right password: DEC-AUTH-02 still holds
         }
