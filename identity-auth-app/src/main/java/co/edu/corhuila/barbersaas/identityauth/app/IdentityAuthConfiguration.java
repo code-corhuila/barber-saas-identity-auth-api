@@ -10,6 +10,7 @@ import co.edu.corhuila.barbersaas.identityauth.adapter.out.persistence.JdbcPassw
 import co.edu.corhuila.barbersaas.identityauth.adapter.out.persistence.JdbcUserRepository;
 import co.edu.corhuila.barbersaas.identityauth.adapter.out.persistence.UuidGenerator;
 import co.edu.corhuila.barbersaas.identityauth.adapter.out.security.BCryptPasswordHasher;
+import co.edu.corhuila.barbersaas.identityauth.adapter.out.security.InMemorySignInFailures;
 import co.edu.corhuila.barbersaas.identityauth.adapter.out.security.OpaqueRefreshTokens;
 import co.edu.corhuila.barbersaas.identityauth.adapter.out.security.RandomResetCodes;
 import co.edu.corhuila.barbersaas.identityauth.adapter.out.security.Rs256TokenIssuer;
@@ -78,11 +79,14 @@ public class IdentityAuthConfiguration {
                 .orElseGet(InMemoryUserRepository::new);
     }
 
-    /** JWT_PRIVATE_KEY: the PEM itself; a one-line value with literal \n escapes, as an env file holds it, is accepted. */
+    /**
+     * JWT_PRIVATE_KEY: the PEM itself; a one-line value with literal \n escapes, as an env file holds it, is accepted.
+     * The access token lives 15 minutes (docs#156): the app keeps the session with the refresh token.
+     */
     @Bean
     Rs256TokenIssuer tokenIssuer(@Value("${JWT_PRIVATE_KEY:}") String pem,
                                  @Value("${JWT_KID:dev-1}") String kid,
-                                 @Value("${JWT_LIFETIME_SECONDS:86400}") long lifetimeSeconds) {
+                                 @Value("${JWT_LIFETIME_SECONDS:900}") long lifetimeSeconds) {
         return new Rs256TokenIssuer(pem.replace("\\n", "\n"), kid, lifetimeSeconds);
     }
 
@@ -93,7 +97,8 @@ public class IdentityAuthConfiguration {
                               @Value("${BARBERSHOP_API_URL:}") String barbershopApiUrl) {
         return new AuthService(users, new BCryptPasswordHasher(strength), issuer,
                 new OpaqueRefreshTokens(database.jdbc()), new HttpBarbershops(barbershopApiUrl), new UuidGenerator(),
-                Clock.systemUTC(), (EmailVerifications) codeStore, new RandomResetCodes());
+                Clock.systemUTC(), (EmailVerifications) codeStore, new RandomResetCodes(),
+                new InMemorySignInFailures(Duration.ofMinutes(15), 100_000));
     }
 
     /**
