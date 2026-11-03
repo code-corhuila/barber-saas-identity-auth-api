@@ -16,11 +16,13 @@ import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.IdempotencyKeyReused;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.InvalidCredentials;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.RegisterCommand;
+import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.SignInLocked;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.UserNotFound;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.Barbershops;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.EmailVerifications;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.OutboxEvent;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.RefreshTokens;
+import co.edu.corhuila.barbersaas.identityauth.application.port.out.SignInFailures;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.PasswordHasher;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.TokenIssuer;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.UserRepository;
@@ -48,6 +50,7 @@ class AuthServiceTest {
     private FakeBarbershops barbershops;
     private FakeVerifications verifications;
     private FakeRefreshTokens refreshTokens;
+    private FakeSignInFailures failures;
     private Instant now;
     private AuthService service;
 
@@ -70,6 +73,7 @@ class AuthServiceTest {
         };
         verifications = new FakeVerifications(users);
         refreshTokens = new FakeRefreshTokens();
+        failures = new FakeSignInFailures();
         now = Instant.parse("2026-10-02T12:00:00Z");
         service = service();
     }
@@ -88,7 +92,7 @@ class AuthServiceTest {
                 return new IssuedToken("bound-" + client.id() + "-" + barbershopId, lifetime.toSeconds());
             }
         }, refreshTokens, barbershops, UUID::randomUUID, Clock.fixed(now, ZoneOffset.UTC), verifications,
-                () -> "123456");
+                () -> "123456", failures);
     }
 
     @Test
@@ -243,12 +247,53 @@ class AuthServiceTest {
     }
 
     @Test
-    void an_email_already_registered_is_a_business_rule_violation() {
-        service.register(command("maria@example.com"), "key-00000001");
+    void a_sign_up_with_an_email_already_registered_looks_new_but_stores_and_sends_nothing() {
+        Created first = service.register(command("maria@example.com"), "key-00000001");
 
-        BusinessRuleViolation e = assertThrows(BusinessRuleViolation.class,
-                () -> service.register(command("MARIA@example.com"), "key-00000002"));
-        assertEquals("The email is already registered", e.getMessage());
+        Created again = service.register(command("MARIA@example.com"), "key-00000002");
+
+        assertTrue(again.created());
+        assertEquals(Role.CLIENT, again.user().role());
+        assertEquals("maria@example.com", again.user().email());
+        assertFalse(again.user().emailVerified());
+        assertFalse(first.user().id().equals(again.user().id()));
+        assertEquals(1, users.byId.size());
+        assertEquals(1, verifications.events.size());
+    }
+
+    @Test
+    void ten_failed_sign_ins_lock_the_email_even_for_the_right_password() {
+        service.register(command("maria@example.com"), "key-00000001");
+        service.confirmEmail("maria@example.com", "123456");
+        for (int i = 0; i < 10; i++) {
+            assertThrows(InvalidCredentials.class, () -> service.login("maria@example.com", "WrongPass123"));
+        }
+
+        assertThrows(SignInLocked.class, () -> service.login("MARIA@example.com", "SecurePass123"));
+        now = now.plus(Duration.ofMinutes(16));
+        assertEquals("maria@example.com", service().login("maria@example.com", "SecurePass123").user().email());
+    }
+
+    @Test
+    void an_unknown_email_locks_the_same_way_so_the_lock_reveals_nothing() {
+        for (int i = 0; i < 10; i++) {
+            assertThrows(InvalidCredentials.class, () -> service.login("nobody@example.com", "WrongPass123"));
+        }
+
+        assertThrows(SignInLocked.class, () -> service.login("nobody@example.com", "WrongPass123"));
+    }
+
+    @Test
+    void a_successful_sign_in_starts_the_count_again() {
+        service.register(command("maria@example.com"), "key-00000001");
+        service.confirmEmail("maria@example.com", "123456");
+        for (int i = 0; i < 9; i++) {
+            assertThrows(InvalidCredentials.class, () -> service.login("maria@example.com", "WrongPass123"));
+        }
+        service.login("maria@example.com", "SecurePass123");
+
+        assertThrows(InvalidCredentials.class, () -> service.login("maria@example.com", "WrongPass123"));
+        assertEquals(1, failures.countSince("maria@example.com", now.minus(Duration.ofMinutes(15))));
     }
 
     @Test
@@ -369,14 +414,14 @@ class AuthServiceTest {
     }
 
     @Test
-    void a_client_gets_a_one_hour_token_bound_to_an_open_barbershop() {
+    void a_client_gets_a_15_minute_token_bound_to_an_open_barbershop() {
         UUID client = service.register(command("maria@example.com"), "key-00000001").user().id();
         UUID barbershop = barbershops.open();
 
         BarbershopToken token = service.issueBarbershopToken(client, barbershop);
 
         assertEquals("bound-" + client + "-" + barbershop, token.accessToken());
-        assertEquals(3_600, token.expiresIn());
+        assertEquals(900, token.expiresIn());
         assertEquals(barbershop, token.barbershopId());
     }
 
@@ -522,6 +567,22 @@ class AuthServiceTest {
             }
             users.byId.computeIfPresent(userId, (id, u) -> u.verifiedAt(at));
             return true;
+        }
+    }
+
+    private static final class FakeSignInFailures implements SignInFailures {
+        private final Map<String, List<Instant>> times = new HashMap<>();
+
+        public int countSince(String email, Instant since) {
+            return (int) times.getOrDefault(email, List.of()).stream().filter(t -> !t.isBefore(since)).count();
+        }
+
+        public void record(String email, Instant at) {
+            times.computeIfAbsent(email, k -> new ArrayList<>()).add(at);
+        }
+
+        public void clear(String email) {
+            times.remove(email);
         }
     }
 

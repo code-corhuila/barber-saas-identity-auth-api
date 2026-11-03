@@ -91,6 +91,13 @@ public interface AuthUseCases {
         }
     }
 
+    /** 429: ten failed sign-ins of one e-mail in 15 minutes lock it for the rest of the window (docs#155). */
+    class SignInLocked extends RuntimeException {
+        public SignInLocked() {
+            super("Too many failed sign-ins, try again in a few minutes");
+        }
+    }
+
     /** The same Idempotency-Key with a different body: 422. */
     class IdempotencyKeyReused extends RuntimeException {
         public IdempotencyKeyReused() {
