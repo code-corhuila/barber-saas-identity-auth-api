@@ -71,7 +71,7 @@ class BarbershopTokenHttpTest {
 
         String body = http.perform(barbershopToken(login, OPEN))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.expiresIn").value(3600))
+                .andExpect(jsonPath("$.expiresIn").value(900))
                 .andExpect(jsonPath("$.barbershopId").value(OPEN.toString()))
                 .andExpect(jsonPath("$.refreshToken").doesNotExist())
                 .andReturn().getResponse().getContentAsString();
