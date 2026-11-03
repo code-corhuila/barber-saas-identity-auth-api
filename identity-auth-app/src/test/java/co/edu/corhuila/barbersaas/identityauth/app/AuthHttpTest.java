@@ -59,7 +59,8 @@ class AuthHttpTest {
         http.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"MARIA@example.com\",\"password\":\"SecurePass123\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").isNotEmpty());
+                .andExpect(jsonPath("$.accessToken").isNotEmpty())
+                .andExpect(jsonPath("$.expiresIn").value(900));            // docs#156: 15 minutes
     }
 
     @Test
