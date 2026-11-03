@@ -6,6 +6,7 @@ import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.IdempotencyKeyReused;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.InvalidCredentials;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.EmailNotVerified;
+import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.SignInLocked;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.AuthUseCases.UserNotFound;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.OutboxRelayUseCases.OutboxEventNotFound;
 import co.edu.corhuila.barbersaas.identityauth.application.port.out.Barbershops;
@@ -40,6 +41,11 @@ public class ErrorHandler {
     @ExceptionHandler(InvalidCredentials.class)
     ResponseEntity<ApiError> invalidCredentials(InvalidCredentials e) {
         return respond(HttpStatus.UNAUTHORIZED, ApiError.of(ApiError.UNAUTHORIZED, e.getMessage()));
+    }
+
+    @ExceptionHandler(SignInLocked.class)
+    ResponseEntity<ApiError> signInLocked(SignInLocked e) {
+        return respond(HttpStatus.TOO_MANY_REQUESTS, ApiError.of(ApiError.TOO_MANY_REQUESTS, e.getMessage()));
     }
 
     @ExceptionHandler(EmailNotVerified.class)
