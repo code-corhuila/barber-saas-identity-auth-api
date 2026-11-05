@@ -4,6 +4,38 @@ All notable changes to `barber-saas-identity-auth-api` are recorded here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-11-05
+
+MVP 3 (corte 3): promoted from `develop` through `qa` with `git cherry-pick -x` (norm 10–11).
+
+User stories: code-corhuila/barber-saas-docs#123, code-corhuila/barber-saas-docs#124, code-corhuila/barber-saas-docs#125, code-corhuila/barber-saas-docs#128, code-corhuila/barber-saas-docs#155, code-corhuila/barber-saas-docs#156, code-corhuila/barber-saas-docs#167.
+
+### Added
+
+- **users:** find the active owners of a barbershop
+- **internal:** read the owners and a user's contact for the MVP 3 notices
+- **domain:** add the verified e-mail and the session and profile ports
+- **auth:** verify the e-mail, rotate refresh tokens and edit the profile
+- **persistence:** store verification codes, verified users and single-use refresh tokens
+- **http:** serve e-mail verification, refresh, logout and the profile
+- **auth:** retire a code after five wrong attempts and limit the reset requests
+- **persistence:** count the failed attempts of the codes in one statement
+- **auth:** lock an e-mail after ten failed sign-ins and answer a taken sign-up like a new one
+- **security:** keep the failed sign-ins in memory with a bounded size
+- **http:** answer a locked sign-in with 429 and issue 15-minute access tokens
+
+### Documentation
+
+- **readme:** list the MVP 3 internal reads
+- **readme:** describe e-mail verification, sessions and the profile
+- **readme:** state the code attempt and request limits
+- **readme:** state the sign-in lock, the token lifetime and the silent sign-up
+
+### Tests
+
+- **http:** cover verification, sessions and the profile end to end
+- **http:** cover the sign-in lock, the 15-minute tokens and the sign-up that reveals no account
+
 ## [2.0.0] - 2026-10-08
 
 MVP 2 (corte 2): first release of this repository to `main`, promoted from `develop` through `qa`
@@ -86,4 +118,5 @@ User stories: code-corhuila/barber-saas-docs#3, code-corhuila/barber-saas-docs#6
 - **env:** list every variable without real values
 - use the new repository name barber-saas-infra-postgres
 
+[3.0.0]: https://github.com/code-corhuila/barber-saas-identity-auth-api/releases/tag/v3.0.0
 [2.0.0]: https://github.com/code-corhuila/barber-saas-identity-auth-api/releases/tag/v2.0.0
