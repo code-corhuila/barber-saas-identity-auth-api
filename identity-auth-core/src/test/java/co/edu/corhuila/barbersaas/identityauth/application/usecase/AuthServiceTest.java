@@ -247,16 +247,13 @@ class AuthServiceTest {
     }
 
     @Test
-    void a_sign_up_with_an_email_already_registered_looks_new_but_stores_and_sends_nothing() {
-        Created first = service.register(command("maria@example.com"), "key-00000001");
+    void a_sign_up_with_an_email_already_registered_is_refused_and_stores_and_sends_nothing() {
+        service.register(command("maria@example.com"), "key-00000001");
 
-        Created again = service.register(command("MARIA@example.com"), "key-00000002");
+        BusinessRuleViolation refused = assertThrows(BusinessRuleViolation.class,
+                () -> service.register(command("MARIA@example.com"), "key-00000002"));
 
-        assertTrue(again.created());
-        assertEquals(Role.CLIENT, again.user().role());
-        assertEquals("maria@example.com", again.user().email());
-        assertFalse(again.user().emailVerified());
-        assertFalse(first.user().id().equals(again.user().id()));
+        assertEquals("The email is already registered", refused.getMessage());
         assertEquals(1, users.byId.size());
         assertEquals(1, verifications.events.size());
     }
