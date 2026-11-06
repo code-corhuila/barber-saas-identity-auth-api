@@ -127,6 +127,7 @@ public class AuthController {
         if (!result.created()) {
             return ResponseEntity.ok(UserSummary.of(result.user()));
         }
+        AuditLine.write(request, AuditLine.BARBER_CREATED, result.user().id(), caller.barbershopId(), caller.subject());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .location(URI.create("/api/v1/users/" + result.user().id()))
                 .body(UserSummary.of(result.user()));
@@ -229,7 +230,8 @@ public class AuthController {
     @PostMapping("/me/password")
     public ResponseEntity<Void> changePassword(HttpServletRequest request,
                                                @RequestBody(required = false) ChangePasswordRequest body) {
-        UUID userId = userOf(AuthFilter.caller(request));
+        Caller caller = AuthFilter.caller(request);
+        UUID userId = userOf(caller);
         List<FieldError> errors = new ArrayList<>();
         if (body == null) {
             throw new ValidationException("the body is required", errors);
@@ -240,6 +242,7 @@ public class AuthController {
             throw new ValidationException("the request is not valid", errors);
         }
         auth.changePassword(userId, body.currentPassword(), body.newPassword(), body.refreshToken());
+        AuditLine.write(request, AuditLine.PASSWORD_CHANGED, userId, caller.barbershopId(), null);
         return ResponseEntity.noContent().build();
     }
 
