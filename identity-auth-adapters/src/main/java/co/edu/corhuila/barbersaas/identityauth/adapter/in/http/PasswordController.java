@@ -5,6 +5,8 @@ import static co.edu.corhuila.barbersaas.identityauth.adapter.in.http.AuthContro
 import co.edu.corhuila.barbersaas.identityauth.adapter.in.http.ApiError.FieldError;
 import co.edu.corhuila.barbersaas.identityauth.adapter.in.http.ApiError.ValidationException;
 import co.edu.corhuila.barbersaas.identityauth.application.port.in.PasswordResetUseCases;
+import co.edu.corhuila.barbersaas.identityauth.domain.model.User;
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -47,7 +49,8 @@ public class PasswordController {
     }
 
     @PostMapping("/confirm")
-    public ResponseEntity<Void> confirm(@RequestBody(required = false) ConfirmRequest body) {
+    public ResponseEntity<Void> confirm(HttpServletRequest request,
+                                        @RequestBody(required = false) ConfirmRequest body) {
         List<FieldError> errors = new ArrayList<>();
         if (body == null) {
             throw new ValidationException("the body is required", errors);
@@ -60,7 +63,8 @@ public class PasswordController {
         if (!errors.isEmpty()) {
             throw new ValidationException("the request is not valid", errors);
         }
-        resets.confirm(body.email(), body.code(), body.newPassword());
+        User user = resets.confirm(body.email(), body.code(), body.newPassword());
+        AuditLine.write(request, AuditLine.PASSWORD_RESET, user.id(), user.barbershopId(), null);
         return ResponseEntity.noContent().build();
     }
 }
