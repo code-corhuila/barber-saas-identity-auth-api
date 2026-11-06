@@ -75,7 +75,7 @@ public class PasswordResetService implements PasswordResetUseCases {
     }
 
     @Override
-    public void confirm(String email, String code, String newPassword) {
+    public User confirm(String email, String code, String newPassword) {
         PasswordPolicy.check(newPassword);
         Instant now = clock.instant();
         User user = normalized(email).flatMap(users::findByEmail).filter(User::active).orElseThrow(this::invalid);
@@ -95,6 +95,7 @@ public class PasswordResetService implements PasswordResetUseCases {
         if (!resets.consume(match.id(), updated, now)) {
             throw invalid();
         }
+        return updated;
     }
 
     private static Optional<String> normalized(String email) {
