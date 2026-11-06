@@ -24,12 +24,17 @@ User stories: code-corhuila/barber-saas-docs#123, code-corhuila/barber-saas-docs
 - **security:** keep the failed sign-ins in memory with a bounded size
 - **http:** answer a locked sign-in with 429 and issue 15-minute access tokens
 
+### Fixed
+
+- **auth:** answer a taken sign-up with 422 so nobody waits for a code
+
 ### Documentation
 
 - **readme:** list the MVP 3 internal reads
 - **readme:** describe e-mail verification, sessions and the profile
 - **readme:** state the code attempt and request limits
 - **readme:** state the sign-in lock, the token lifetime and the silent sign-up
+- **readme:** state that a taken sign-up is a 422
 
 ### Tests
 
