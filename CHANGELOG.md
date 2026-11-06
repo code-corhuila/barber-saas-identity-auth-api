@@ -12,6 +12,7 @@ User stories: code-corhuila/barber-saas-docs#123, code-corhuila/barber-saas-docs
 
 ### Added
 
+- **audit:** write one audit line for password changes and new barbers
 - **users:** find the active owners of a barbershop
 - **internal:** read the owners and a user's contact for the MVP 3 notices
 - **domain:** add the verified e-mail and the session and profile ports
