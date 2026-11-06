@@ -36,7 +36,7 @@ no Spring), `identity-auth-adapters` (HTTP, JDBC, BCrypt, RS256) and `identity-a
 
 | Operation | Contract |
 |---|---|
-| `POST /api/v1/auth/register` | `Idempotency-Key` required; 201 with the account and no tokens, or 200 on a retry; a taken e-mail gets the same 201 and body, stores nothing and sends no code, so the sign-up does not reveal who has an account (docs#167). The account is unverified and a 6-digit code goes to its e-mail through `EmailVerificationRequested` (`DEC-AUTH-09`, ADR-018) |
+| `POST /api/v1/auth/register` | `Idempotency-Key` required; 201 with the account and no tokens, or 200 on a retry; a taken e-mail is a 422, so nobody waits for a code that will not come (DEC-AUTH-11). The account is unverified and a 6-digit code goes to its e-mail through `EmailVerificationRequested` (`DEC-AUTH-09`, ADR-018) |
 | `POST /api/v1/auth/login` | 200 with tokens (the access token lives 15 minutes, `JWT_LIFETIME_SECONDS=900`, docs#156); 401 with the same message for any wrong credential; 403 when the password is right but the e-mail is not verified; 429 after 10 failed sign-ins of one e-mail in 15 minutes, for any e-mail and even with the right password, until the window passes (docs#155; counted in memory, one instance per host) |
 | `POST /api/v1/auth/email-verification/confirm` | 200 with the same tokens as login: verifies the account; 422 with one message for a wrong, expired or used code; after 5 wrong attempts the code stops working, even the right one (SEC-03) |
 | `POST /api/v1/auth/email-verification/resend` | Always 202; a new code for an unverified account, at most one per minute and five per hour |
