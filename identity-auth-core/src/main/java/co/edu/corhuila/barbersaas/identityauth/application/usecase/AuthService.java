@@ -83,7 +83,7 @@ public class AuthService implements AuthUseCases {
     public Created register(RegisterCommand command, String idempotencyKey) {
         return createOnce(idempotencyKey, REGISTER_OPERATION,
                 requestHash(command.fullName(), command.email(), command.password(), command.phone()),
-                command.password(), command.email(), false,
+                command.password(), command.email(),
                 (email, hash) -> User.newClient(ids.next(), command.fullName(), email, hash, command.phone(),
                         clock.instant()));
     }
@@ -93,7 +93,7 @@ public class AuthService implements AuthUseCases {
         return createOnce(idempotencyKey, CREATE_OWNER_OPERATION,
                 requestHash(command.fullName(), command.email(), command.password(), command.phone(),
                         String.valueOf(command.barbershopId())),
-                command.password(), command.email(), true,
+                command.password(), command.email(),
                 (email, hash) -> User.newOwner(ids.next(), command.barbershopId(), command.fullName(), email, hash,
                         command.phone(), clock.instant()));
     }
@@ -103,7 +103,7 @@ public class AuthService implements AuthUseCases {
         return createOnce(idempotencyKey, CREATE_BARBER_OPERATION,
                 requestHash(command.fullName(), command.email(), command.password(), command.phone(),
                         String.valueOf(ownerBarbershopId)),
-                command.password(), command.email(), true,
+                command.password(), command.email(),
                 (email, hash) -> User.newBarber(ids.next(), ownerBarbershopId, command.fullName(), email, hash,
                         command.phone(), clock.instant()));
     }
@@ -111,11 +111,10 @@ public class AuthService implements AuthUseCases {
     /**
      * Creates an account once per Idempotency-Key: a retry with the same key and body returns the
      * first account and creates nothing; the same key with another body is refused. A taken e-mail is
-     * a 422 only where the caller is trusted ({@code revealTaken}); the public sign-up answers it like a
-     * new account and stores nothing (docs#167).
+     * always a 422, so nobody waits for a code that will not come (DEC-AUTH-11).
      */
     private Created createOnce(String idempotencyKey, String operation, String requestHash, String password,
-                               String rawEmail, boolean revealTaken, BiFunction<String, String, User> build) {
+                               String rawEmail, BiFunction<String, String, User> build) {
         Optional<UserRepository.StoredKey> stored = users.findKey(idempotencyKey, operation);
         if (stored.isPresent()) {
             if (!stored.get().requestHash().equals(requestHash)) {
@@ -126,27 +125,18 @@ public class AuthService implements AuthUseCases {
 
         PasswordPolicy.check(password);
         String email = User.normalizeEmail(rawEmail);
-        boolean taken = users.findByEmail(email).isPresent();
-        User user = build.apply(email, hasher.hash(password));   // hashed either way: the time is the same
-        if (taken) {
-            return alreadyTaken(user, revealTaken, "The email is already registered");
+        if (users.findByEmail(email).isPresent()) {
+            throw new BusinessRuleViolation("The email is already registered");
         }
+        User user = build.apply(email, hasher.hash(password));
         try {
             users.saveNew(user, new IdempotencyRecord(idempotencyKey, operation, requestHash));
         } catch (UserRepository.EmailAlreadyTaken e) {
-            return alreadyTaken(user, revealTaken, e.getMessage());
+            throw new BusinessRuleViolation(e.getMessage());
         }
         // A second transaction: if it fails the account exists without a code, and "resend" sends one.
         sendVerification(user);
         return new Created(user, true);
-    }
-
-    /** The unsaved account looks like a new one: same status, same body, no code is sent (docs#167). */
-    private static Created alreadyTaken(User unsaved, boolean revealTaken, String message) {
-        if (revealTaken) {
-            throw new BusinessRuleViolation(message);
-        }
-        return new Created(unsaved, true);
     }
 
     @Override
