@@ -65,7 +65,14 @@ class PasswordResetHttpTest {
         http.perform(confirm("laura@example.com", code.equals("000000") ? "111111" : "000000", "NewPass123"))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.message").value("The code is invalid or has expired"));
+        var audit = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        audit.start();
+        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger("audit");
+        logger.addAppender(audit);
         http.perform(confirm("laura@example.com", code, "NewPass123")).andExpect(status().isNoContent());
+        logger.detachAppender(audit);
+        org.junit.jupiter.api.Assertions.assertEquals(1, audit.list.size());
+        org.junit.jupiter.api.Assertions.assertEquals("password.reset", audit.list.get(0).getFormattedMessage());
         http.perform(confirm("laura@example.com", code, "Other12345")).andExpect(status().isUnprocessableEntity());
 
         http.perform(login("laura@example.com", "SecurePass123")).andExpect(status().isUnauthorized());
