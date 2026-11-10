@@ -37,13 +37,16 @@ public class InternalOutboxController {
         this.relay = relay;
     }
 
-    /** listPendingOutboxEvents: at most {@code limit} (1–100, default 20), oldest first. */
+    /** The largest batch: a stolen worker token reads every tenant's pending events only slowly (docs#160). */
+    static final int MAX_LIMIT = 50;
+
+    /** listPendingOutboxEvents: at most {@code limit} (1–50, default 20), oldest first. */
     @GetMapping
     public PendingView pending(HttpServletRequest request, @RequestParam(required = false) Integer limit) {
         requireWorker(request);
-        if (limit != null && (limit < 1 || limit > 100)) {
+        if (limit != null && (limit < 1 || limit > MAX_LIMIT)) {
             throw new ValidationException("the request is not valid",
-                    List.of(new FieldError("limit", "between 1 and 100")));
+                    List.of(new FieldError("limit", "between 1 and " + MAX_LIMIT)));
         }
         return new PendingView(relay.pending(limit == null ? 20 : limit));
     }
@@ -72,8 +75,11 @@ public class InternalOutboxController {
         return ResponseEntity.noContent().build();
     }
 
+    /** The worker's relay token: the reset codes travel here, so its scope is required (docs#159, docs#160). */
+    static final String RELAY_SCOPE = "outbox:relay";
+
     private static void requireWorker(HttpServletRequest request) {
-        if (!AuthFilter.caller(request).isService(WORKER)) {
+        if (!AuthFilter.caller(request).isService(WORKER, RELAY_SCOPE)) {
             throw new ForbiddenException();
         }
     }

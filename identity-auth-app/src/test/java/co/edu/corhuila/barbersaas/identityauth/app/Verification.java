@@ -18,7 +18,7 @@ final class Verification {
     /** The newest pending EmailVerificationRequested code of {@code email}. Needs the keys of InternalHttpTest. */
     static String code(MockMvc http, ObjectMapper json, String email) throws Exception {
         String worker = InternalHttpTest.token("barber-saas-worker", "SERVICE", null);
-        String body = http.perform(get("/internal/v1/outbox-events?limit=100")
+        String body = http.perform(get("/internal/v1/outbox-events?limit=50")
                         .header("Authorization", "Bearer " + worker))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         String code = null;
