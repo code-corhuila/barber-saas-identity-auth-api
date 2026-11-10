@@ -116,7 +116,8 @@ class InternalHttpTest {
         String tenant = barbershopId == null ? "" : ",\"barbershopId\":\"" + barbershopId + "\"";
         String header = b64("{\"alg\":\"RS256\",\"typ\":\"JWT\",\"kid\":\"dev-1\"}");
         String claims = b64("{\"iss\":\"barber-saas-identity-auth-api\",\"sub\":\"" + subject + "\",\"role\":\""
-                + role + "\",\"iat\":" + now + ",\"exp\":" + (now + 600) + tenant + "}");
+                + role + "\",\"iat\":" + now + ",\"exp\":" + (now + 600) + tenant
+                + (("barber-saas-worker".equals(subject) && "SERVICE".equals(role)) ? ",\"scope\":\"outbox:relay\"" : "") + "}");   // as dev-keys.sh issues it
         Signature rsa = Signature.getInstance("SHA256withRSA");
         rsa.initSign(KEYS.getPrivate());
         rsa.update((header + "." + claims).getBytes(StandardCharsets.US_ASCII));
