@@ -8,7 +8,7 @@ All notable changes to `barber-saas-identity-auth-api` are recorded here. The fo
 
 MVP 3 (corte 3): promoted from `develop` through `qa` with `git cherry-pick -x` (norm 10–11).
 
-User stories: code-corhuila/barber-saas-docs#123, code-corhuila/barber-saas-docs#124, code-corhuila/barber-saas-docs#125, code-corhuila/barber-saas-docs#128, code-corhuila/barber-saas-docs#155, code-corhuila/barber-saas-docs#156, code-corhuila/barber-saas-docs#167.
+User stories: code-corhuila/barber-saas-docs#123, code-corhuila/barber-saas-docs#124, code-corhuila/barber-saas-docs#125, code-corhuila/barber-saas-docs#128, code-corhuila/barber-saas-docs#155, code-corhuila/barber-saas-docs#156, code-corhuila/barber-saas-docs#159, code-corhuila/barber-saas-docs#160, code-corhuila/barber-saas-docs#164, code-corhuila/barber-saas-docs#167.
 
 ### Added
 
@@ -24,6 +24,8 @@ User stories: code-corhuila/barber-saas-docs#123, code-corhuila/barber-saas-docs
 - **auth:** lock an e-mail after ten failed sign-ins and answer a taken sign-up like a new one
 - **security:** keep the failed sign-ins in memory with a bounded size
 - **http:** answer a locked sign-in with 429 and issue 15-minute access tokens
+- **auth:** name the app as the audience of every user token
+- **outbox:** read at most fifty events and only with the worker's relay scope
 
 ### Fixed
 
