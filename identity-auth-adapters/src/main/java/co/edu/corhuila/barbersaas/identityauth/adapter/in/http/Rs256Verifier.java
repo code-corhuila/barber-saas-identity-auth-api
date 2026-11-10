@@ -70,7 +70,10 @@ public class Rs256Verifier {
             }
             UUID tenant = claims.path("barbershopId").isTextual()
                     ? UUID.fromString(claims.get("barbershopId").asText()) : null;
-            return new Caller(claims.get("sub").asText(), claims.get("role").asText(), tenant);
+            java.util.Set<String> scopes = claims.path("scope").isTextual()
+                    ? java.util.Set.copyOf(java.util.List.of(claims.get("scope").asText().trim().split("\\s+")))
+                    : java.util.Set.of();
+            return new Caller(claims.get("sub").asText(), claims.get("role").asText(), tenant, scopes);
         } catch (InvalidTokenException e) {
             throw e;
         } catch (Exception e) {
