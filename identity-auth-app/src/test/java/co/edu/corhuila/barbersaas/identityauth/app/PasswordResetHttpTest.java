@@ -111,6 +111,31 @@ class PasswordResetHttpTest {
         http.perform(get("/internal/v1/outbox-events").header("Authorization",
                         "Bearer " + token(UUID.randomUUID().toString(), "SUPER_ADMIN")))
                 .andExpect(status().isForbidden());
+        // docs#159: the worker without outbox:relay (a token meant for another operation) reads no reset code.
+        for (String scope : new String[] {null, "subscriptions:expire", "events:deliver"}) {
+            http.perform(get("/internal/v1/outbox-events").header("Authorization",
+                            "Bearer " + token("barber-saas-worker", "SERVICE", scope)))
+                    .andExpect(status().isForbidden());
+        }
+    }
+
+    @Test
+    void the_outbox_is_read_in_batches_of_at_most_fifty() throws Exception {      // docs#160
+        String worker = token("barber-saas-worker", "SERVICE");
+        http.perform(get("/internal/v1/outbox-events?limit=51").header("Authorization", "Bearer " + worker))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.details[0].field").value("limit"));
+        http.perform(get("/internal/v1/outbox-events?limit=0").header("Authorization", "Bearer " + worker))
+                .andExpect(status().isBadRequest());
+        for (int i = 0; i < 3; i++) {
+            String email = "batch" + i + "@example.com";
+            register(email);
+            http.perform(reset(email)).andExpect(status().isAccepted());
+        }
+        http.perform(get("/internal/v1/outbox-events?limit=2").header("Authorization", "Bearer " + worker))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2));
+        assertTrue(pending(worker).size() <= 50);
     }
 
     @Test
@@ -138,7 +163,7 @@ class PasswordResetHttpTest {
     }
 
     private JsonNode pending(String worker) throws Exception {
-        String body = http.perform(get("/internal/v1/outbox-events?limit=100").header("Authorization", "Bearer " + worker))
+        String body = http.perform(get("/internal/v1/outbox-events?limit=50").header("Authorization", "Bearer " + worker))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         return json.readTree(body).get("data");
     }
@@ -175,11 +200,17 @@ class PasswordResetHttpTest {
                 .contentType(MediaType.APPLICATION_JSON).content(body);
     }
 
+    /** The worker's token carries outbox:relay, as dev-keys.sh issues it. */
     private static String token(String subject, String role) throws Exception {
+        return token(subject, role, ("barber-saas-worker".equals(subject) && "SERVICE".equals(role)) ? "outbox:relay" : null);
+    }
+
+    private static String token(String subject, String role, String scope) throws Exception {
         long now = Instant.now().getEpochSecond();
         String header = b64("{\"alg\":\"RS256\",\"typ\":\"JWT\",\"kid\":\"dev-1\"}");
         String claims = b64("{\"iss\":\"barber-saas-identity-auth-api\",\"sub\":\"" + subject + "\",\"role\":\""
-                + role + "\",\"iat\":" + now + ",\"exp\":" + (now + 600) + "}");
+                + role + "\",\"iat\":" + now + ",\"exp\":" + (now + 600)
+                + (scope == null ? "" : ",\"scope\":\"" + scope + "\"") + "}");
         Signature rsa = Signature.getInstance("SHA256withRSA");
         rsa.initSign(KEYS.getPrivate());
         rsa.update((header + "." + claims).getBytes(StandardCharsets.US_ASCII));
