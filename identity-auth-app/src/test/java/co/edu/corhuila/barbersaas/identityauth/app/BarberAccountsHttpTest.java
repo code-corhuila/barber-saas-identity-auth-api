@@ -82,6 +82,18 @@ class BarberAccountsHttpTest {
     }
 
     @Test
+    void an_owner_token_without_a_barbershop_cannot_add_barbers() throws Exception {      // docs#166, criterion 2
+        String ownerWithoutShop = InternalHttpTest.token(UUID.randomUUID().toString(), "ADMIN_BARBERSHOP", null);
+
+        http.perform(createBarber(ownerWithoutShop, "barber-key-0007", barber("nobody@example.com")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("FORBIDDEN"));
+        http.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"nobody@example.com\",\"password\":\"Inicial2026\"}"))
+                .andExpect(status().isUnauthorized());                                  // no account was created
+    }
+
+    @Test
     void without_a_token_it_is_401() throws Exception {
         http.perform(post("/api/v1/auth/barbers").header("Idempotency-Key", "barber-key-0004")
                         .contentType(MediaType.APPLICATION_JSON).content(barber("c@example.com")))
