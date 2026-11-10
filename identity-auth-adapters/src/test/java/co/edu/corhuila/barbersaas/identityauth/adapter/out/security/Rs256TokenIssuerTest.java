@@ -94,4 +94,17 @@ class Rs256TokenIssuerTest {
         assertThrows(Exception.class,
                 () -> new Rs256Verifier(issuer.publicKeyPem()).verify(bound.token(), now.plusSeconds(7_200)));
     }
+
+    @Test
+    void every_user_token_names_the_app_as_its_audience() {
+        User owner = new User(UUID.randomUUID(), UUID.randomUUID(), "Andres", "andres@example.com", "hash", null, null,
+                Role.ADMIN_BARBERSHOP, true, Instant.now());
+        Instant now = Instant.now();
+
+        for (String token : new String[] {issuer.issue(owner, now).token(),
+                issuer.issueBound(owner, UUID.randomUUID(), now, java.time.Duration.ofMinutes(15)).token()}) {
+            String claims = new String(Base64.getUrlDecoder().decode(token.split("\\.")[1]));
+            assertTrue(claims.contains("\"aud\":\"barber-saas-app\""), claims);   // docs#164
+        }
+    }
 }
