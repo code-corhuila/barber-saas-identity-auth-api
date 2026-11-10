@@ -24,6 +24,8 @@ import java.util.UUID;
 public class Rs256TokenIssuer implements TokenIssuer {
 
     public static final String ISSUER = "barber-saas-identity-auth-api";
+    /** Every user token is for the app: services refuse it on /api/v1/** without this audience (docs#164). */
+    public static final String AUDIENCE = "barber-saas-app";
 
     private final RSAPrivateCrtKey key;
     private final String kid;
@@ -63,6 +65,7 @@ public class Rs256TokenIssuer implements TokenIssuer {
         header.put("kid", kid);
         Map<String, Object> claims = new LinkedHashMap<>();
         claims.put("iss", ISSUER);
+        claims.put("aud", AUDIENCE);
         claims.put("sub", user.id().toString());
         claims.put("role", user.role().name());
         if (barbershopId != null) {
